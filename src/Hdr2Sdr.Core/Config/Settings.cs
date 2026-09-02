@@ -25,6 +25,14 @@ public sealed record Settings
     public int HelperRingFrames { get; init; } = 12;
     /// <summary>Copy pixels ShareX's editor added (arrows, text, blur) over the tonemapped result.</summary>
     public bool CarryAnnotations { get; init; } = true;
+    /// <summary>
+    /// Milliseconds of frame history the helper keeps on the GPU at all times (0 = off). With history on, captures
+    /// started without a hotkey (tray menu, command line) are aligned too, and the keyboard hook becomes optional.
+    /// Costs one full frame of VRAM per ~16 ms.
+    /// </summary>
+    public int HelperHistoryMs { get; init; } = 0;
+    /// <summary>Watch ShareX's own hotkeys with a low-level keyboard hook (off = rely on the region-window watcher and history).</summary>
+    public bool HelperKeyboardHook { get; init; } = true;
 
     public const int WebpLossless = 101;
     public static readonly string[] CursorModes = { "auto", "on", "off" };
@@ -49,6 +57,7 @@ public sealed record Settings
         else s = s with { HdrSidecar = s.HdrSidecar.ToLowerInvariant() };
         if (s.HelperRingMs < 0 || s.HelperRingMs > 2000) { fixes.Add($"helperRingMs {s.HelperRingMs} -> clamped"); s = s with { HelperRingMs = Math.Clamp(s.HelperRingMs, 0, 2000) }; }
         if (s.HelperRingFrames < 1 || s.HelperRingFrames > 60) { fixes.Add($"helperRingFrames {s.HelperRingFrames} -> clamped"); s = s with { HelperRingFrames = Math.Clamp(s.HelperRingFrames, 1, 60) }; }
+        if (s.HelperHistoryMs < 0 || s.HelperHistoryMs > 1000) { fixes.Add($"helperHistoryMs {s.HelperHistoryMs} -> clamped"); s = s with { HelperHistoryMs = Math.Clamp(s.HelperHistoryMs, 0, 1000) }; }
         return s;
     }
 

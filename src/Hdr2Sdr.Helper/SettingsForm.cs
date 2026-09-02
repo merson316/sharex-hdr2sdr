@@ -31,6 +31,9 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _sidecar = new() { Text = "Also save the raw HDR region as JPEG XR (.jxr)", AutoSize = true };
     private readonly CheckBox _useHelper = new() { Text = "Use helper snapshots (exact frame at the hotkey)", AutoSize = true };
     private readonly CheckBox _startup = new() { Text = "Start helper at logon (scheduled task)", AutoSize = true };
+    private readonly CheckBox _keyboardHook = new() { Text = "Watch ShareX hotkeys with a keyboard hook", AutoSize = true };
+    private readonly NumericUpDown _history = new() { Minimum = 0, Maximum = 1000, Increment = 50, Width = 70 };
+    private readonly Label _historyNote = new() { Text = "ms of frame history kept on the GPU (0 = off); aligns tray/CLI captures, ~40 MB VRAM per 16 ms at 4K", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly PictureBox _original = new() { SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.Black };
     private readonly PictureBox _preview = new() { SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.Black };
     private readonly Label _previewStatus = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
@@ -72,6 +75,8 @@ public sealed class SettingsForm : Form
         Row("WebP quality", _webp, _webpLossless);
         Row("", _sidecar);
         Row("", _useHelper);
+        Row("", _keyboardHook);
+        Row("Frame history", _history, _historyNote);
         Row("", _startup);
 
         var previewPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Padding = new Padding(10) };
@@ -140,7 +145,14 @@ public sealed class SettingsForm : Form
         Cursor = _cursor.SelectedItem?.ToString() ?? "auto",
         HdrSidecar = _sidecar.Checked ? "jxr" : "none",
         UseHelper = _useHelper.Checked,
+        HelperKeyboardHook = _keyboardHook.Checked,
+        HelperHistoryMs = (int)_history.Value,
+        CarryAnnotations = _carry,
+        HelperRingMs = _ringMs,
+        HelperRingFrames = _ringFrames,
     };
+    private bool _carry = true;
+    private int _ringMs = 250, _ringFrames = 12;
 
     private new void Load()
     {
@@ -161,6 +173,9 @@ public sealed class SettingsForm : Form
         _webp.Value = _webpLossless.Checked ? 90 : s.WebpQuality;
         _sidecar.Checked = s.HdrSidecar == "jxr";
         _useHelper.Checked = s.UseHelper;
+        _keyboardHook.Checked = s.HelperKeyboardHook;
+        _history.Value = Math.Clamp(s.HelperHistoryMs, 0, 1000);
+        _carry = s.CarryAnnotations; _ringMs = s.HelperRingMs; _ringFrames = s.HelperRingFrames;   // not shown, preserved on save
         _startup.Checked = StartupTask.IsInstalled();
         _sdrWhite.Enabled = _sdrOverride.Checked;
         _peak.Enabled = _peakOverride.Checked;
@@ -173,6 +188,7 @@ public sealed class SettingsForm : Form
         Settings s = Current().Sanitized(out _);
         SettingsFile.Save(ShareXPaths.SettingsPath, s);
         _service.Log.Info("settings saved");
+        _service.ReloadSettings();
         bool installed = StartupTask.IsInstalled();
         if (_startup.Checked && !installed)
         {

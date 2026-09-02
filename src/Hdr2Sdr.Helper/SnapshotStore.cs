@@ -57,7 +57,7 @@ public sealed class SnapshotStore
         }
         finally
         {
-            foreach (CaptureLoop l in loops) l.Frozen = false;
+            foreach (CaptureLoop l in loops) l.Unfreeze();
         }
         sw.Stop();
         _log.Info($"snapshot of {loops.Count} outputs in {sw.ElapsedMilliseconds} ms");

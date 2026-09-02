@@ -48,6 +48,10 @@ public sealed class HotkeyWatcher : IDisposable
     public bool Installed => _installed;
     public int ComboCount => _combos.Count;
     public bool Paused { get; set; }
+    /// <summary>When false the keyboard hook is not armed; the region-window watcher still runs on this thread.</summary>
+    public bool KeyboardHookEnabled { get; set; } = true;
+    /// <summary>Extra hooks that need this thread's message loop (installed from the hook thread).</summary>
+    public Action? OnHookThreadReady { get; set; }
 
     public HotkeyWatcher(string shareXHotkeysConfigPath, HelperLog log)
     {
@@ -79,6 +83,7 @@ public sealed class HotkeyWatcher : IDisposable
     {
         _threadId = GetCurrentThreadId();
         Arm();
+        OnHookThreadReady?.Invoke();
         ready.Set();
         while (GetMessageW(out Msg msg, IntPtr.Zero, 0, 0))
         {
@@ -91,6 +96,7 @@ public sealed class HotkeyWatcher : IDisposable
     private void Arm()
     {
         Disarm();
+        if (!KeyboardHookEnabled) { _log.Info("keyboard hook disabled by settings"); return; }
         _hook = SetWindowsHookExW(WhKeyboardLl, _proc, GetModuleHandleW(null), 0);
         _installed = _hook != IntPtr.Zero;
         if (!_installed) _log.Error($"keyboard hook failed: {Marshal.GetLastWin32Error()}");
