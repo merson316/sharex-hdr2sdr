@@ -28,7 +28,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add("Open log", null, (_, _) => Process.Start(new ProcessStartInfo(_service.Log.Path) { UseShellExecute = true }));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
-        _icon = new NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "hdr2sdr helper", Visible = true, ContextMenuStrip = menu };
+        _icon = new NotifyIcon { Icon = AppIcon.Get(), Text = "hdr2sdr helper", Visible = true, ContextMenuStrip = menu };
         _icon.DoubleClick += (_, _) => ShowSettings();
         _timer = new System.Windows.Forms.Timer { Interval = 1000 };
         _timer.Tick += (_, _) => _status.Text = _service.StatusText();

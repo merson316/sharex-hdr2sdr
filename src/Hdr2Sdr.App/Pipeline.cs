@@ -201,7 +201,9 @@ internal static class Pipeline
             if (ring.Count > 0)
             {
                 DesktopTonemapper previewTm = PreviewTonemapper(container.Output);
-                float Score(FloatImage crop) => RegionMatcher.Find(template, PixelConvert.ToGray(PixelConvert.ToRgba8(crop, previewTm), tw, th)).Score;
+                int ds = Math.Max(1, Math.Min(tw, th) / 64);   // score at reduced resolution; ranking frames does not need every pixel
+                GrayImage templateSmall = template.Downsample(ds);
+                float Score(FloatImage crop) => RegionMatcher.Find(templateSmall, PixelConvert.ToGray(PixelConvert.ToRgba8(crop, previewTm), tw, th).Downsample(ds)).Score;
                 float bestScore = Score(container.Capture.Crop(lx, ly, tw, th));
                 int bestOffset = 0;
                 FloatImage? bestCrop = null;

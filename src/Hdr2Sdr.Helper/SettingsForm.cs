@@ -41,6 +41,7 @@ public sealed class SettingsForm : Form
     {
         _service = service;
         Text = "hdr2sdr settings";
+        Icon = AppIcon.Get();
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
         MinimumSize = new Size(900, 620);
