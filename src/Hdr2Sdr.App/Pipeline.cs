@@ -3,6 +3,7 @@ using Hdr2Sdr.Windows.Imaging;
 using Hdr2Sdr.Core.Cli;
 using Hdr2Sdr.Core.Imaging;
 using Hdr2Sdr.Core.Match;
+using Hdr2Sdr.Core.Config;
 using Hdr2Sdr.Core.Tonemap;
 
 namespace Hdr2Sdr.App;
@@ -37,7 +38,7 @@ internal static class Pipeline
         return captured > 0 ? ExitCodes.Ok : ExitCodes.CaptureFailed;
     }
 
-    public static int Process(CliOptions opts, DisplaySet set, Log log)
+    public static int Process(CliOptions opts, Settings settings, DisplaySet set, Log log)
     {
         string input = opts.InputPath!;
         byte[] rgbaIn;
@@ -144,22 +145,16 @@ internal static class Pipeline
         }
 
         // Final pixels: the preview already is the default tonemap; recompute HDR outputs only for custom settings.
-        bool customTonemap = !(opts.Tonemap == "desktop" && opts.Knee >= 1f && opts.Exposure == 1f && opts.SdrWhiteNits == null && opts.PeakNits == null);
+        bool customTonemap = settings.IsCustomTonemap;
         var tiles = new List<RgbaImage.Tile>(captured.Count);
         foreach (CapturedOutput c in captured.Values)
         {
             byte[] rgba = c.Preview;
             if (c.Output.Hdr && customTonemap && region.Intersects(c.Output))
             {
-                var p = new TonemapParams
-                {
-                    SdrWhiteNits = opts.SdrWhiteNits ?? c.Output.SdrWhiteNits,
-                    PeakNits = opts.PeakNits ?? c.Output.MaxLuminance,
-                    Exposure = opts.Exposure,
-                    Knee = opts.Knee,
-                };
-                log.Info($"tonemap {opts.Tonemap} on {c.Output.DeviceName}: sdrWhite={p.SdrWhiteNits:F0} peak={p.PeakNits:F0} exposure={p.Exposure} knee={p.Knee}");
-                rgba = PixelConvert.ToRgba8(c.Capture, TonemapperFactory.Create(opts.Tonemap, p));
+                TonemapParams p = settings.ToTonemapParams(c.Output.SdrWhiteNits, c.Output.MaxLuminance);
+                log.Info($"tonemap {settings.Tonemap} on {c.Output.DeviceName}: sdrWhite={p.SdrWhiteNits:F0} peak={p.PeakNits:F0} exposure={p.Exposure} knee={p.Knee}");
+                rgba = PixelConvert.ToRgba8(c.Capture, TonemapperFactory.Create(settings.Tonemap, p));
             }
             tiles.Add(Tile(c.Output, rgba));
         }
@@ -184,7 +179,7 @@ internal static class Pipeline
         byte[]? fileBytes = null;
         try
         {
-            fileBytes = extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ? png : ImageIO.Encode(result, tw, th, extension);
+            fileBytes = extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ? png : ImageIO.Encode(result, tw, th, extension, settings.JpegQuality, settings.WebpQuality);
         }
         catch (Exception e)
         {

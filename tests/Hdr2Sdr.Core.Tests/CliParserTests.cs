@@ -11,9 +11,9 @@ public class CliParserTests
         var o = CliParser.Parse(new[] { @"C:\shots\a.png" });
         Assert.Equal(RunMode.Process, o.Mode);
         Assert.Equal(@"C:\shots\a.png", o.InputPath);
-        Assert.Equal("desktop", o.Tonemap);
-        Assert.Equal(1f, o.Exposure);
-        Assert.Equal(1f, o.Knee);
+        Assert.Null(o.Tonemap);      // not given: settings.json or the default applies
+        Assert.Null(o.Exposure);
+        Assert.Null(o.Knee);
         Assert.Null(o.SdrWhiteNits);
         Assert.Null(o.PeakNits);
         Assert.False(o.NoClipboard);

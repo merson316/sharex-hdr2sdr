@@ -1,5 +1,6 @@
 using Hdr2Sdr.Windows.Display;
 using Hdr2Sdr.Core.Cli;
+using Hdr2Sdr.Core.Config;
 
 namespace Hdr2Sdr.App;
 
@@ -36,8 +37,17 @@ internal static class Program
         }
     }
 
+    public static string DefaultSettingsPath
+        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "hdr2sdr", "settings.json");
+
     private static int Run(CliOptions opts, Log log)
     {
+        string settingsPath = opts.SettingsPath ?? DefaultSettingsPath;
+        var (fileSettings, settingsError) = SettingsFile.Load(settingsPath);
+        if (settingsError != null) log.Warn($"settings: {settingsError}");
+        Settings settings = fileSettings.ApplyCli(opts);
+        log.Info($"settings ({(File.Exists(settingsPath) ? settingsPath : "defaults")}): tonemap={settings.Tonemap} exposure={settings.Exposure} knee={settings.Knee} sdrWhite={settings.SdrWhiteNits?.ToString() ?? "auto"} peak={settings.PeakNits?.ToString() ?? "auto"} jpeg={settings.JpegQuality} webp={settings.WebpQuality} cursor={settings.Cursor} sidecar={settings.HdrSidecar} helper={settings.UseHelper}");
+
         Dictionary<string, DisplayInfo> displays;
         try
         {
@@ -62,7 +72,7 @@ internal static class Program
             case RunMode.CaptureAll:
                 return Pipeline.CaptureAll(opts, set, log);
             default:
-                return Pipeline.Process(opts, set, log);
+                return Pipeline.Process(opts, settings, set, log);
         }
     }
 }

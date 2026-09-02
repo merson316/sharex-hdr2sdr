@@ -15,6 +15,8 @@ public static class CliParser
         Re-captures the desktop in HDR, finds where <input.png> came from, tonemaps that
         region to SDR, overwrites <input.png> and copies the result to the clipboard.
 
+        Flags override settings.json, which overrides the built-in defaults.
+
         options:
           --tonemap desktop|hable|aces  tonemapping operator (default desktop)
           --exposure <float>            linear gain before tonemapping (default 1.0)
@@ -22,6 +24,12 @@ public static class CliParser
                                         BT.2390 roll-off starts; 1.0 = exact SDR, clip above
           --sdr-white <nits>            override the monitor's SDR white level
           --peak <nits>                 override the monitor's peak luminance
+          --jpeg-quality <0.1..1>       JPEG output quality (default 0.9)
+          --webp-quality <0..100|lossless>  WebP output quality (default 90)
+          --cursor auto|on|off          include the mouse cursor (auto = ShareX's setting)
+          --sidecar none|jxr            also save the raw HDR region as JPEG XR
+          --no-helper                   do not ask the resident helper for a snapshot
+          --settings <path>             settings file (default %LOCALAPPDATA%\hdr2sdr\settings.json)
           --no-clipboard                do not copy the result to the clipboard
           --output <path>               write here instead of overwriting the input
           --dump-dir <dir>              write raw captures and previews for diagnosis
@@ -89,6 +97,39 @@ public static class CliParser
                     o = o with { PeakNits = v };
                     break;
                 }
+                case "--jpeg-quality":
+                {
+                    float v = Float(args, ref i);
+                    if (v < 0.1f || v > 1f) throw new CliException("--jpeg-quality must be between 0.1 and 1.");
+                    o = o with { JpegQuality = v };
+                    break;
+                }
+                case "--webp-quality":
+                {
+                    string v = Value(args, ref i);
+                    if (v.Equals("lossless", StringComparison.OrdinalIgnoreCase)) { o = o with { WebpQuality = 101 }; break; }
+                    if (!int.TryParse(v, out int q) || q < 0 || q > 100) throw new CliException("--webp-quality must be 0-100 or 'lossless'.");
+                    o = o with { WebpQuality = q };
+                    break;
+                }
+                case "--cursor":
+                {
+                    string v = Value(args, ref i).ToLowerInvariant();
+                    if (v is not ("auto" or "on" or "off")) throw new CliException("--cursor must be auto, on or off.");
+                    o = o with { Cursor = v };
+                    break;
+                }
+                case "--sidecar":
+                {
+                    string v = Value(args, ref i).ToLowerInvariant();
+                    if (v is not ("none" or "jxr")) throw new CliException("--sidecar must be none or jxr.");
+                    o = o with { HdrSidecar = v };
+                    break;
+                }
+                case "--no-helper":
+                    o = o with { NoHelper = true }; break;
+                case "--settings":
+                    o = o with { SettingsPath = Value(args, ref i) }; break;
                 case "--output":
                     o = o with { OutputPath = Value(args, ref i) }; break;
                 case "--dump-dir":
