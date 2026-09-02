@@ -23,6 +23,8 @@ public sealed record Settings
     public int HelperRingMs { get; init; } = 250;
     /// <summary>Maximum frames recorded in that window (GPU memory: one full frame each).</summary>
     public int HelperRingFrames { get; init; } = 12;
+    /// <summary>Copy pixels ShareX's editor added (arrows, text, blur) over the tonemapped result.</summary>
+    public bool CarryAnnotations { get; init; } = true;
 
     public const int WebpLossless = 101;
     public static readonly string[] CursorModes = { "auto", "on", "off" };
@@ -63,6 +65,7 @@ public sealed record Settings
         Cursor = o.Cursor ?? Cursor,
         HdrSidecar = o.HdrSidecar ?? HdrSidecar,
         UseHelper = o.NoHelper ? false : UseHelper,
+        CarryAnnotations = o.NoAnnotations ? false : CarryAnnotations,
     };
 
     public TonemapParams ToTonemapParams(float monitorSdrWhiteNits, float monitorPeakNits) => new()

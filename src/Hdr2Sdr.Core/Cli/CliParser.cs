@@ -29,6 +29,7 @@ public static class CliParser
           --cursor auto|on|off          include the mouse cursor (auto = ShareX's setting)
           --sidecar none|jxr            also save the raw HDR region as JPEG XR
           --no-helper                   do not ask the resident helper for a snapshot
+          --no-annotations              do not carry ShareX editor annotations over
           --settings <path>             settings file (default %LOCALAPPDATA%\hdr2sdr\settings.json)
           --no-clipboard                do not copy the result to the clipboard
           --output <path>               write here instead of overwriting the input
@@ -128,6 +129,8 @@ public static class CliParser
                 }
                 case "--no-helper":
                     o = o with { NoHelper = true }; break;
+                case "--no-annotations":
+                    o = o with { NoAnnotations = true }; break;
                 case "--settings":
                     o = o with { SettingsPath = Value(args, ref i) }; break;
                 case "--output":

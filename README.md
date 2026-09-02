@@ -150,10 +150,10 @@ JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/H
   mode. (Windows' own Auto HDR/HDR games in borderless mode work.)
 - Captures started without a ShareX hotkey (tray menu, command line) get a live re-capture even with
   the helper running, because there was no key press to freeze on.
-- Anything you draw in ShareX's built-in image editor before the file is saved is lost: the action
-  replaces ShareX's pixels with the re-tonemapped capture, so annotations made in the editor do not
-  survive. Annotate after the fact instead (open the saved file in the editor), or turn the action off
-  for hotkeys that always go through the editor. Preserving editor annotations is a planned fix.
+- Edits made in ShareX's image editor before saving (arrows, text, blur, pixelate, highlights) are
+  carried over onto the tonemapped result by comparing ShareX's image with ours; the one case that is
+  missed is an annotation drawn directly on top of HDR-bright pixels, and a resize in the editor still
+  defeats the match so ShareX's image is kept. `--no-annotations` turns the carry-over off.
 
 ## License
 

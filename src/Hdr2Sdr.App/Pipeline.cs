@@ -237,6 +237,31 @@ internal static class Pipeline
         }
         log.Info($"region ({region.Left},{region.Top},{tw}x{th}) covers {string.Join(", ", hits.Select(h => h.Output.DeviceName + (h.Output.Hdr ? " (HDR)" : " (SDR)")))}");
 
+        FloatImage? hdrRegion = null;
+        if (settings.CarryAnnotations || settings.HdrSidecar == "jxr")
+        {
+            if (hdrRegionOverride != null) hdrRegion = hdrRegionOverride;
+            else if (container != null) hdrRegion = container.Capture.Crop(region.Left - container.Output.Left, region.Top - container.Output.Top, tw, th);
+            else
+            {
+                var (canvas, cLeft, cTop) = FloatImage.Composite(captured.Values.Select(c => new FloatImage.Tile(c.Capture, c.Output.Left, c.Output.Top)).ToList());
+                hdrRegion = canvas.Crop(region.Left - cLeft, region.Top - cTop, tw, th);
+            }
+        }
+
+        if (settings.CarryAnnotations && container != null && hdrRegion != null)
+        {
+            // What GDI produced for SDR pixels equals our default render; anything else ShareX's editor added.
+            byte[] reference = customTonemap ? PixelConvert.ToRgba8(hdrRegion, PreviewTonemapper(container.Output)) : result;
+            float scale = container.Output.Hdr ? container.Output.SdrWhiteNits / 80f : 1f;
+            AnnotationResult ann = AnnotationRecovery.Apply(rgbaIn, reference, result, hdrRegion, scale, tw, th);
+            if (ann.Pixels > 0)
+            {
+                log.Info($"annotations: {ann.Pixels} px from ShareX's image carried over");
+                result = ann.Rgba;
+            }
+        }
+
         string target = opts.OutputPath ?? input;
         string extension = Path.GetExtension(target);
         byte[] png = Png.EncodeRgba8(result, tw, th);
@@ -265,24 +290,10 @@ internal static class Pipeline
             }
         }
 
-        if (settings.HdrSidecar == "jxr")
+        if (settings.HdrSidecar == "jxr" && hdrRegion != null)
         {
             try
             {
-                FloatImage hdrRegion;
-                if (hdrRegionOverride != null)
-                {
-                    hdrRegion = hdrRegionOverride;
-                }
-                else if (container != null)
-                {
-                    hdrRegion = container.Capture.Crop(region.Left - container.Output.Left, region.Top - container.Output.Top, tw, th);
-                }
-                else
-                {
-                    var (canvas, cLeft, cTop) = FloatImage.Composite(captured.Values.Select(c => new FloatImage.Tile(c.Capture, c.Output.Left, c.Output.Top)).ToList());
-                    hdrRegion = canvas.Crop(region.Left - cLeft, region.Top - cTop, tw, th);
-                }
                 string sidecar = Path.ChangeExtension(target, ".jxr");
                 File.WriteAllBytes(sidecar, JxrEncoder.EncodeHalf(hdrRegion));
                 log.Info($"wrote HDR sidecar {sidecar}");

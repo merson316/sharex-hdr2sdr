@@ -18,6 +18,7 @@ public sealed record CliOptions
     public string? Cursor { get; init; }
     public string? HdrSidecar { get; init; }
     public bool NoHelper { get; init; }
+    public bool NoAnnotations { get; init; }
     public string? SettingsPath { get; init; }
     public bool NoClipboard { get; init; }
     public string? OutputPath { get; init; }

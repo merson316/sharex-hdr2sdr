@@ -22,6 +22,7 @@ public class SettingsTests
         Assert.True(s.UseHelper);
         Assert.Equal(250, s.HelperRingMs);
         Assert.Equal(12, s.HelperRingFrames);
+        Assert.True(s.CarryAnnotations);
     }
 
     [Fact]
@@ -97,13 +98,14 @@ public class SettingsTests
     public void Cli_flags_override_file_only_where_given()
     {
         var file = new Settings { Tonemap = "hable", Exposure = 2f, Knee = 0.5f, WebpQuality = 80 };
-        var cli = CliParser.Parse(new[] { "in.png", "--knee", "0.7", "--sidecar", "jxr", "--no-helper" });
+        var cli = CliParser.Parse(new[] { "in.png", "--knee", "0.7", "--sidecar", "jxr", "--no-helper", "--no-annotations" });
         Settings eff = file.ApplyCli(cli);
         Assert.Equal("hable", eff.Tonemap);      // from file
         Assert.Equal(2f, eff.Exposure);          // from file
         Assert.Equal(0.7f, eff.Knee);            // from CLI
         Assert.Equal("jxr", eff.HdrSidecar);     // from CLI
         Assert.False(eff.UseHelper);             // from CLI
+        Assert.False(eff.CarryAnnotations);      // from CLI
         Assert.Equal(80, eff.WebpQuality);       // from file
     }
 
