@@ -25,7 +25,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(_status);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
-        _pause = new ToolStripMenuItem("Pause hotkey freeze", null, (_, _) => { _service.Paused = !_service.Paused; _pause.Checked = _service.Paused; });
+        _pause = new ToolStripMenuItem("Pause (let ShareX capture on its own)", null, (_, _) => { _service.Paused = !_service.Paused; _pause.Checked = _service.Paused; });
         menu.Items.Add(_pause);
         menu.Items.Add("Open log", null, (_, _) => Process.Start(new ProcessStartInfo(_service.Log.Path) { UseShellExecute = true }));
         menu.Items.Add(new ToolStripSeparator());

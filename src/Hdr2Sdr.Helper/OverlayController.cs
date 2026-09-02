@@ -10,11 +10,11 @@ using Hdr2Sdr.Core.Tonemap;
 namespace Hdr2Sdr.Helper;
 
 /// <summary>
-/// SPIKE: on a ShareX hotkey, swallow the key, show our tonemapped frame as a borderless topmost window over each
-/// HDR output, wait for the compositor, then re-inject the hotkey so ShareX captures the overlay with GDI.
-/// Throwaway code to answer two questions: does GDI see the overlay in time, and does ShareX accept the re-injected key?
+/// Overlay mode. On a ShareX capture hotkey: swallow the key, show the tonemapped frozen frame as a borderless
+/// topmost window over each HDR output, wait for the compositor, then start the same ShareX job through ShareX's
+/// command line. ShareX's GDI capture then sees correct SDR pixels and every ShareX feature works unchanged.
 /// </summary>
-public sealed class OverlaySpike : IDisposable
+public sealed class OverlayController : IDisposable
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct Input { public uint type; public KeyboardInput ki; public long padding; }
@@ -30,17 +30,23 @@ public sealed class OverlaySpike : IDisposable
     private readonly System.Windows.Forms.Timer _hide;
     private readonly Stopwatch _sw = new();
 
-    public OverlaySpike(HelperService service, Control uiThreadControl)
+    /// <summary>Jobs that capture the instant they start (no selector window): hide the overlay soon after.</summary>
+    private static readonly HashSet<string> InstantJobs = new(StringComparer.OrdinalIgnoreCase) { "PrintScreen", "ActiveWindow", "ActiveMonitor", "WindowRectangle", "LastRegion", "CustomRegion" };
+    private const int RegionJobTimeoutMs = 2500, InstantJobTimeoutMs = 400;
+    private readonly Action _onRegionWindow;
+
+    public OverlayController(HelperService service, Control uiThreadControl)
     {
         _service = service;
         _ui = uiThreadControl;
-        _hide = new System.Windows.Forms.Timer { Interval = 2500 };
+        _hide = new System.Windows.Forms.Timer { Interval = RegionJobTimeoutMs };
         _hide.Tick += (_, _) => Hide("timeout");
         _service.Hotkeys.Swallow = true;
         _service.Store.OverlayActive = true;
         _service.Hotkeys.Hotkey += OnHotkey;
-        _service.RegionWindow.RegionWindowShown += () => _ui.BeginInvoke(() => Hide("ShareX region window shown"));
-        _service.Log.Info("overlay spike active: ShareX hotkeys are swallowed, overlaid and re-injected");
+        _onRegionWindow = () => { if (!_ui.IsDisposed) _ui.BeginInvoke(() => Hide("ShareX region window shown")); };
+        _service.RegionWindow.RegionWindowShown += _onRegionWindow;
+        _service.Log.Info("overlay mode on: ShareX hotkeys are intercepted, the corrected frame is shown and the ShareX job started");
     }
 
     private void OnHotkey(HotkeyCombo combo)
@@ -56,12 +62,13 @@ public sealed class OverlaySpike : IDisposable
         {
             Hide("new hotkey");
             long t0 = _sw.ElapsedMilliseconds;
+            Core.Config.Settings settings = _service.Settings;
             foreach (CaptureLoop loop in _service.Loops)
             {
                 if (!loop.Output.Hdr) continue;
                 var shot = loop.Snapshot(includeCursor: false, timeoutMs: 1000);
                 if (shot == null) { _service.Log.Warn($"overlay: no frame for {loop.Output.DeviceName}"); continue; }
-                var tm = new DesktopTonemapper(new TonemapParams { SdrWhiteNits = loop.Output.SdrWhiteNits, PeakNits = loop.Output.MaxLuminance });
+                ITonemapper tm = TonemapperFactory.Create(settings.Tonemap, settings.ToTonemapParams(loop.Output.SdrWhiteNits, loop.Output.MaxLuminance));
                 byte[] rgba = PixelConvert.ToRgba8(shot.Value.Image, tm);
                 var form = new OverlayForm(new Rectangle(loop.Output.Left, loop.Output.Top, loop.Output.Width, loop.Output.Height), ToBitmap(rgba, loop.Output.Width, loop.Output.Height));
                 form.Show();
@@ -72,7 +79,9 @@ public sealed class OverlaySpike : IDisposable
             DwmFlush(); DwmFlush();          // two composed frames so GDI's copy of the desktop contains the overlay
             long t2 = _sw.ElapsedMilliseconds;
             string how = TriggerShareX(combo);
-            _hide.Stop(); _hide.Start();
+            _hide.Stop();
+            _hide.Interval = InstantJobs.Contains(combo.Job) ? InstantJobTimeoutMs : RegionJobTimeoutMs;
+            _hide.Start();
             _service.Log.Info($"overlay: {_forms.Count} windows, tonemap+show {t1 - t0} ms, composed after {t2 - t0} ms, ShareX triggered via {how} at {_sw.ElapsedMilliseconds} ms");
         }
         catch (Exception e)
@@ -149,8 +158,10 @@ public sealed class OverlaySpike : IDisposable
         _service.Hotkeys.Swallow = false;
         _service.Store.OverlayActive = false;
         _service.Hotkeys.Hotkey -= OnHotkey;
-        Hide("dispose");
+        _service.RegionWindow.RegionWindowShown -= _onRegionWindow;
+        Hide("overlay mode off");
         _hide.Dispose();
+        _service.Log.Info("overlay mode off");
     }
 
     /// <summary>Borderless, topmost, non-activating window that paints one bitmap.</summary>

@@ -1,3 +1,4 @@
+using System.Windows.Forms;
 using Hdr2Sdr.Windows.Display;
 
 namespace Hdr2Sdr.Helper;
@@ -11,6 +12,12 @@ public sealed class HelperService : IDisposable
     public RegionWindowWatcher RegionWindow { get; }
     public List<CaptureLoop> Loops { get; } = new();
     private Core.Config.Settings _settings = new();
+    public Core.Config.Settings Settings => _settings;
+    private OverlayController? _overlay;
+    private Control? _ui;
+    /// <summary>Command-line override: true/false forces overlay mode on/off regardless of settings.</summary>
+    public bool? OverlayOverride { get; set; }
+    public bool OverlayOn => _overlay != null;
     private DisplaySet? _displays;
     private PipeServer? _pipe;
     public bool Paused { get => Hotkeys.Paused; set { Hotkeys.Paused = value; Log.Info(value ? "paused" : "resumed"); } }
@@ -26,12 +33,32 @@ public sealed class HelperService : IDisposable
         ReloadSettings();
     }
 
-    /// <summary>Re-reads settings.json and applies the helper-related values (history, keyboard hook).</summary>
+    /// <summary>Re-reads settings.json and applies the helper-related values (history, keyboard hook, overlay mode).</summary>
     public void ReloadSettings()
     {
         (_settings, _) = Core.Config.SettingsFile.Load(ShareXPaths.SettingsPath);
         Hotkeys.KeyboardHookEnabled = _settings.HelperKeyboardHook;
         foreach (CaptureLoop l in Loops) l.HistoryMs = _settings.HelperHistoryMs;
+        ApplyOverlaySetting();
+    }
+
+    /// <summary>Call once from the UI thread with a control created there; overlay windows are shown through it.</summary>
+    public void AttachUi(Control ui)
+    {
+        _ui = ui;
+        ApplyOverlaySetting();
+    }
+
+    private void ApplyOverlaySetting()
+    {
+        bool want = OverlayOverride ?? (_settings.OverlayMode && _settings.HelperKeyboardHook);
+        if (_ui == null) return;
+        void Apply()
+        {
+            if (want && _overlay == null) _overlay = new OverlayController(this, _ui);
+            else if (!want && _overlay != null) { _overlay.Dispose(); _overlay = null; }
+        }
+        if (_ui.InvokeRequired) _ui.BeginInvoke(Apply); else Apply();
     }
 
     /// <summary>Starts loops and the pipe server. Call Hotkeys.Install() from the UI thread separately.</summary>
@@ -109,12 +136,14 @@ public sealed class HelperService : IDisposable
         int ready = Loops.Count(l => l.HasFrame);
         string hook = Hotkeys.Installed ? $"{Hotkeys.ComboCount} hotkeys" : (Hotkeys.KeyboardHookEnabled ? "hotkey hook unavailable" : "hotkey hook off");
         string hist = _settings.HelperHistoryMs > 0 ? $"; history {_settings.HelperHistoryMs} ms ({Loops.Sum(l => l.HistoryCount)} frames)" : "";
-        return $"{snap}; {ready}/{Loops.Count} outputs live; {hook}{(RegionWindow.Installed ? ", window watch" : "")}{hist}";
+        string mode = OverlayOn ? "overlay mode" : "post-capture mode";
+        return $"{mode}; {snap}; {ready}/{Loops.Count} outputs live; {hook}{(RegionWindow.Installed ? ", window watch" : "")}{hist}";
     }
 
     public void Dispose()
     {
         _pipe?.Dispose();
+        _overlay?.Dispose();
         RegionWindow.Dispose();
         Hotkeys.Dispose();
         StopLoops();

@@ -16,9 +16,11 @@ internal static class Program
         ApplicationConfiguration.Initialize();
         using var service = new HelperService();
         service.Start();
+        if (args.Contains("--overlay")) service.OverlayOverride = true;
+        if (args.Contains("--no-overlay")) service.OverlayOverride = false;
         using var tray = new TrayApp(service);
         service.Hotkeys.Install();   // hook runs on its own thread
-        using OverlaySpike? spike = args.Contains("--overlay") ? new OverlaySpike(service, tray.UiControl) : null;
+        service.AttachUi(tray.UiControl);
         Application.Run(tray);
         return 0;
     }

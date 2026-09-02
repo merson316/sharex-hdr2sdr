@@ -17,9 +17,12 @@ every ShareX capture and fixes the image:
 Region, window, monitor and multi-monitor fullscreen captures are all handled. If anything goes
 wrong the tool exits without touching ShareX's file or the clipboard.
 
-An optional resident helper (`hdr2sdr-helper.exe`, tray icon) makes the result exact even for
-moving content: it freezes the HDR frame the instant you press a ShareX hotkey, includes the mouse
-cursor, and offers a settings dialog with a live preview of your last capture.
+The resident helper (`hdr2sdr-helper.exe`, tray icon) goes one better with **overlay mode**: when you
+press a ShareX hotkey it freezes the HDR frame, shows the corrected SDR image on screen and starts the
+ShareX capture itself, so ShareX photographs correct pixels in the first place. Every ShareX feature
+(editor, blur, effects, uploads, cursor) then works unchanged, and moving content is exact. The
+post-capture action remains as the fallback for captures started from ShareX's tray menu or command
+line. The helper also offers a settings dialog with a live preview of your last capture.
 
 ## Requirements
 
@@ -63,7 +66,7 @@ re-tonemaps your last capture live as you move the sliders:
   "sdrWhiteNits": null, "peakNits": null,
   "jpegQuality": 0.9, "webpQuality": 90,
   "cursor": "auto", "hdrSidecar": "none", "carryAnnotations": true,
-  "useHelper": true, "helperKeyboardHook": true,
+  "useHelper": true, "helperKeyboardHook": true, "overlayMode": true,
   "helperRingMs": 250, "helperRingFrames": 12, "helperHistoryMs": 0
 }
 ```
@@ -75,11 +78,20 @@ Windows Photos shows in HDR. `webpQuality: 101` means lossless.
 
 ## The helper
 
-Without the helper, the action re-captures the screen when it runs, which is after you finished
-drawing the region, so a video or game shows a later frame. The helper keeps a Desktop Duplication
-session open and, when you press one of ShareX's capture hotkeys, freezes the frame at that instant
-and hands it to the action over a named pipe. The action falls back to a live capture whenever the
-helper is not running or its snapshot does not belong to this capture.
+The helper keeps a Desktop Duplication session open per monitor and watches ShareX's own capture
+hotkeys (read from ShareX's `HotkeysConfig.json`).
+
+**Overlay mode** (default): the hotkey is intercepted, the frozen HDR frame is tonemapped with your
+settings and shown in a borderless window over each HDR monitor, and after two composed frames the
+helper starts the same ShareX job through ShareX's command line. ShareX's own capture then contains
+the corrected image; its region selector, editor and everything downstream work on it, and the action
+sees the result and leaves it alone. The overlay disappears as soon as ShareX's selector appears
+(about 0.3 s). Jobs started this way use ShareX's default task settings rather than per-hotkey
+overrides.
+
+**Post-capture mode** (`overlayMode: false`, or captures started without a hotkey): the hotkey passes
+through to ShareX, the helper only freezes the frame, and the action re-tonemaps ShareX's file after
+the fact as described above. Without the helper, the action re-captures the screen when it runs.
 
 After the trigger the helper keeps recording for `helperRingMs` (up to `helperRingFrames` frames on the
 GPU) and the action picks the recorded frame that matches ShareX's capture best, so the two line up to
@@ -155,6 +167,8 @@ JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/H
   (video frames, animations) shows its later state, and the cursor is not included. The region is
   still located correctly as long as part of it stayed put; if everything changed, the match fails
   and ShareX's image is kept. With the helper both problems go away.
+- In overlay mode, HDR content looks SDR for the ~0.3 s the overlay is up (the selector covers it), and
+  ShareX jobs run with ShareX's default task settings rather than per-hotkey overrides.
 - DRM-protected content captures black.
 - Games in true exclusive fullscreen cannot be captured by Desktop Duplication (the log then says so
   and ShareX's image is kept); use borderless windowed mode. Most current games run as a borderless
@@ -162,11 +176,11 @@ JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/H
 - Captures started without a ShareX hotkey (tray menu, command line) get a live re-capture unless
   `helperHistoryMs` is on; they cannot be frozen at the right instant otherwise. Non-region captures
   started that way (active window, monitor) are not detectable at all and always re-capture live.
-- Edits made in ShareX's image editor before saving (arrows, text, blur, pixelate, highlights) are
-  carried over onto the tonemapped result by comparing ShareX's image with ours, but only over SDR
-  content: on and right around HDR surfaces (video, games) Windows renders GDI's copy through its own
-  tone curve, so differences there cannot be told from edits and are left alone. A resize in the
-  editor defeats the match and keeps ShareX's image. `--no-annotations` turns the carry-over off.
+- In post-capture mode, edits made in ShareX's image editor before saving are carried over by
+  comparing ShareX's image with ours, but only over SDR content: on and around HDR surfaces (video,
+  games) Windows renders GDI's copy through its own tone curve, so edits there are left alone, and a
+  resize in the editor keeps ShareX's image. Overlay mode has none of these limits because ShareX
+  edits the correct pixels directly.
 
 ## License
 

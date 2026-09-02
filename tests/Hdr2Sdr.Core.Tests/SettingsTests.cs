@@ -23,6 +23,7 @@ public class SettingsTests
         Assert.Equal(250, s.HelperRingMs);
         Assert.Equal(12, s.HelperRingFrames);
         Assert.True(s.CarryAnnotations);
+        Assert.True(s.OverlayMode);
     }
 
     [Fact]
