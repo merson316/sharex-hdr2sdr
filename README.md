@@ -47,8 +47,9 @@ cursor, and offers a settings dialog with a live preview of your last capture.
 That's it. Every capture is now processed automatically; the clipboard ends up holding the
 tonemapped image because the action runs after ShareX's own clipboard copy.
 
-3. Optional helper: run `hdr2sdr-helper.exe` once (or `python3 tools/install_sharex_action.py --helper`
-   to register it as a logon task and start it). A tray icon appears; double-click it for settings.
+3. Optional helper: put `hdr2sdr-helper.exe` next to `hdr2sdr.exe` and the installer registers it as a
+   logon task and starts it (`--no-helper` to skip). Or just run it. A tray icon appears; double-click
+   it for settings.
 
 ## Settings
 
@@ -61,7 +62,9 @@ re-tonemaps your last capture live as you move the sliders:
   "tonemap": "desktop", "exposure": 1.0, "knee": 1.0,
   "sdrWhiteNits": null, "peakNits": null,
   "jpegQuality": 0.9, "webpQuality": 90,
-  "cursor": "auto", "hdrSidecar": "none", "useHelper": true
+  "cursor": "auto", "hdrSidecar": "none", "carryAnnotations": true,
+  "useHelper": true, "helperKeyboardHook": true,
+  "helperRingMs": 250, "helperRingFrames": 12, "helperHistoryMs": 0
 }
 ```
 
@@ -78,10 +81,17 @@ session open and, when you press one of ShareX's capture hotkeys, freezes the fr
 and hands it to the action over a named pipe. The action falls back to a live capture whenever the
 helper is not running or its snapshot does not belong to this capture.
 
-Privacy: the helper installs a low-level keyboard hook to notice ShareX's hotkeys. It only compares
-each key-down against the combinations read from ShareX's own `HotkeysConfig.json`; keys are never
-stored or logged. Frames live in memory only, the newest one for at most two minutes. Pause it from the
-tray menu whenever you like.
+After the trigger the helper keeps recording for `helperRingMs` (up to `helperRingFrames` frames on the
+GPU) and the action picks the recorded frame that matches ShareX's capture best, so the two line up to
+the frame. With `helperHistoryMs` above zero the helper also keeps that much recent history at all
+times (one frame of VRAM per ~16 ms); then captures started from ShareX's tray menu or command line are
+aligned too, because the helper notices ShareX's region window appearing and reaches back into the
+history. With history on you can turn `helperKeyboardHook` off entirely.
+
+Privacy: by default the helper installs a low-level keyboard hook to notice ShareX's hotkeys. It only
+compares each key-down against the combinations read from ShareX's own `HotkeysConfig.json`; keys are
+never stored or logged. Frames live in memory only, the newest snapshot for at most two minutes. Pause
+it from the tray menu whenever you like, or disable the hook in the settings dialog.
 
 ## Command line
 
@@ -146,10 +156,12 @@ JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/H
   still located correctly as long as part of it stayed put; if everything changed, the match fails
   and ShareX's image is kept. With the helper both problems go away.
 - DRM-protected content captures black.
-- Games in exclusive fullscreen cannot be captured by Desktop Duplication; use borderless windowed
-  mode. (Windows' own Auto HDR/HDR games in borderless mode work.)
-- Captures started without a ShareX hotkey (tray menu, command line) get a live re-capture even with
-  the helper running, because there was no key press to freeze on.
+- Games in true exclusive fullscreen cannot be captured by Desktop Duplication (the log then says so
+  and ShareX's image is kept); use borderless windowed mode. Most current games run as a borderless
+  flip under Windows' fullscreen optimisations and work fine.
+- Captures started without a ShareX hotkey (tray menu, command line) get a live re-capture unless
+  `helperHistoryMs` is on; they cannot be frozen at the right instant otherwise. Non-region captures
+  started that way (active window, monitor) are not detectable at all and always re-capture live.
 - Edits made in ShareX's image editor before saving (arrows, text, blur, pixelate, highlights) are
   carried over onto the tonemapped result by comparing ShareX's image with ours; the one case that is
   missed is an annotation drawn directly on top of HDR-bright pixels, and a resize in the editor still

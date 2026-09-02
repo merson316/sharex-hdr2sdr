@@ -118,7 +118,9 @@ internal static class Pipeline
                 CapturedOutput? cap = captured.TryGetValue(o.DeviceName, out CapturedOutput? held) ? held : TryCapture(o, index++, opts, log);
                 if (cap == null) continue;
                 captured[o.DeviceName] = cap;
-                MatchResult m = RegionMatcher.FindRobust(template, PixelConvert.ToGray(cap.Preview, o.Width, o.Height));
+                GrayImage outputGray = PixelConvert.ToGray(cap.Preview, o.Width, o.Height);
+                if (IsUniform(outputGray)) log.Warn($"{o.DeviceName} captured as a uniform frame: an exclusive-fullscreen app cannot be captured by Desktop Duplication; use borderless windowed mode");
+                MatchResult m = RegionMatcher.FindRobust(template, outputGray);
                 log.Info($"match on {o.DeviceName}: ({m.X},{m.Y}) score={m.Score:F4} coverage={m.Coverage:P0}");
                 if (m.Score > best.Score)
                 {
@@ -326,6 +328,17 @@ internal static class Pipeline
     }
 
     private static RgbaImage.Tile Tile(OutputHandle o, byte[] rgba) => new(rgba, o.Width, o.Height, o.Left, o.Top);
+
+    /// <summary>True when the whole frame is one flat colour (black for exclusive fullscreen or protected content).</summary>
+    private static bool IsUniform(GrayImage g)
+    {
+        double sum = 0, sq = 0;
+        int step = Math.Max(1, g.Data.Length / 200_000);   // sample
+        int n = 0;
+        for (int i = 0; i < g.Data.Length; i += step) { sum += g.Data[i]; sq += g.Data[i] * g.Data[i]; n++; }
+        double mean = sum / n;
+        return sq / n - mean * mean < 1e-6;
+    }
 
     private static CapturedOutput? TryCapture(OutputHandle o, int index, CliOptions opts, Log log)
     {
