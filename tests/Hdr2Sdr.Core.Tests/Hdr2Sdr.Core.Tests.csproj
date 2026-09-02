@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Hdr2Sdr.Core.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <ProjectReference Include="../../src/Hdr2Sdr.Core/Hdr2Sdr.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
