@@ -70,16 +70,40 @@ public sealed class OverlaySpike : IDisposable
             Application.DoEvents();          // let the forms paint
             DwmFlush(); DwmFlush();          // two composed frames so GDI's copy of the desktop contains the overlay
             long t2 = _sw.ElapsedMilliseconds;
-            Reinject(combo);
+            string how = TriggerShareX(combo);
             _hide.Stop(); _hide.Start();
-            _service.Log.Info($"overlay: {_forms.Count} windows, tonemap+show {t1 - t0} ms, composed after {t2 - t0} ms, hotkey re-injected at {_sw.ElapsedMilliseconds} ms");
+            _service.Log.Info($"overlay: {_forms.Count} windows, tonemap+show {t1 - t0} ms, composed after {t2 - t0} ms, ShareX triggered via {how} at {_sw.ElapsedMilliseconds} ms");
         }
         catch (Exception e)
         {
             _service.Log.Error("overlay failed: " + e.Message);
             Hide("error");
-            Reinject(combo);   // never leave the user's hotkey swallowed
+            TriggerShareX(combo);   // never leave the user's hotkey swallowed
         }
+    }
+
+    /// <summary>
+    /// Starts the ShareX job the hotkey was bound to through ShareX's command line (handed to the running instance),
+    /// so there is no keystroke race. Falls back to re-injecting the key if ShareX's executable cannot be found.
+    /// </summary>
+    private string TriggerShareX(HotkeyCombo combo)
+    {
+        try
+        {
+            string? exe = Process.GetProcessesByName("ShareX").Select(p => { try { return p.MainModule?.FileName; } catch { return null; } }).FirstOrDefault(f => f != null);
+            exe ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ShareX", "ShareX.exe");
+            if (File.Exists(exe))
+            {
+                Process.Start(new ProcessStartInfo(exe, "-" + combo.Job) { UseShellExecute = false, CreateNoWindow = true });
+                return $"ShareX.exe -{combo.Job}";
+            }
+        }
+        catch (Exception e)
+        {
+            _service.Log.Warn("ShareX CLI trigger failed: " + e.Message);
+        }
+        Reinject(combo);
+        return "re-injected hotkey";
     }
 
     private static void Reinject(HotkeyCombo combo)
