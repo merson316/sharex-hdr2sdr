@@ -1,6 +1,6 @@
 using Vortice.DXGI;
 
-namespace Hdr2Sdr.App.Display;
+namespace Hdr2Sdr.Windows.Display;
 
 public sealed class OutputHandle
 {

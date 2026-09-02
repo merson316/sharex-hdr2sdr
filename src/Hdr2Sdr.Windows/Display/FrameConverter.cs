@@ -2,7 +2,7 @@ using Hdr2Sdr.Core.Color;
 using Hdr2Sdr.Core.Imaging;
 using Vortice.DXGI;
 
-namespace Hdr2Sdr.App.Display;
+namespace Hdr2Sdr.Windows.Display;
 
 public static unsafe class FrameConverter
 {

@@ -3,7 +3,7 @@ using Hdr2Sdr.Core.Imaging;
 using SharpGen.Runtime.Win32;
 using Vortice.WIC;
 
-namespace Hdr2Sdr.App.Imaging;
+namespace Hdr2Sdr.Windows.Imaging;
 
 /// <summary>
 /// Reads any image the Windows Imaging Component can decode (PNG, JPEG, BMP, GIF, TIFF, WebP, HEIF, ...)

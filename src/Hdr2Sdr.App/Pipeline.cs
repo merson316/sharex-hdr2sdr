@@ -1,5 +1,5 @@
-using Hdr2Sdr.App.Display;
-using Hdr2Sdr.App.Imaging;
+using Hdr2Sdr.Windows.Display;
+using Hdr2Sdr.Windows.Imaging;
 using Hdr2Sdr.Core.Cli;
 using Hdr2Sdr.Core.Imaging;
 using Hdr2Sdr.Core.Match;
@@ -210,7 +210,7 @@ internal static class Pipeline
         {
             try
             {
-                Clipboard.Win32Clipboard.SetImage(result, tw, th, png);
+                Hdr2Sdr.Windows.Clipboard.Win32Clipboard.SetImage(result, tw, th, png);
                 log.Info("clipboard updated");
             }
             catch (Exception e)

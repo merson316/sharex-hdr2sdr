@@ -1,4 +1,4 @@
-using Hdr2Sdr.App.Display;
+using Hdr2Sdr.Windows.Display;
 using Hdr2Sdr.Core.Cli;
 
 namespace Hdr2Sdr.App;

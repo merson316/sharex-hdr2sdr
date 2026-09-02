@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Hdr2Sdr.App.Display;
+namespace Hdr2Sdr.Windows.Display;
 
 public sealed record DisplayInfo(string GdiDeviceName, float SdrWhiteNits, bool AdvancedColorEnabled);
 

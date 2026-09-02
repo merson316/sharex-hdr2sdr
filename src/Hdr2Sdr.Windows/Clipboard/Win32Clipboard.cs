@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Hdr2Sdr.Core.Imaging;
 
-namespace Hdr2Sdr.App.Clipboard;
+namespace Hdr2Sdr.Windows.Clipboard;
 
 public static class Win32Clipboard
 {

@@ -5,7 +5,7 @@ using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
-namespace Hdr2Sdr.App.Display;
+namespace Hdr2Sdr.Windows.Display;
 
 public static class DesktopDuplicator
 {
