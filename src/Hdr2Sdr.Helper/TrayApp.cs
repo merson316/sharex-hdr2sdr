@@ -26,7 +26,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         var capture = new ToolStripMenuItem("Capture");
         foreach (var (label, job) in new[] { ("Region", "RectangleRegion"), ("Active window", "ActiveWindow"), ("Active monitor", "ActiveMonitor"), ("Fullscreen", "PrintScreen"), ("Last region", "LastRegion") })
-            capture.DropDownItems.Add(label, null, (_, _) => _service.StartCapture(job));
+            capture.DropDownItems.Add(label, null, (_, _) => CaptureAfterMenuCloses(menu, job));
         menu.Items.Add(capture);
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
         _pause = new ToolStripMenuItem("Pause (let ShareX capture on its own)", null, (_, _) => { _service.Paused = !_service.Paused; _pause.Checked = _service.Paused; });
@@ -41,6 +41,20 @@ public sealed class TrayApp : ApplicationContext
         _timer.Start();
         _window = new DisplayChangeWindow(() => _service.OnDisplayChange());
         _ = UiControl.Handle;   // force creation on this thread
+    }
+
+    /// <summary>The menu and the taskbar's tray flyout are still on screen when an item is clicked; freeze only after they are gone.</summary>
+    private void CaptureAfterMenuCloses(ContextMenuStrip menu, string job)
+    {
+        menu.Close();
+        var delay = new System.Windows.Forms.Timer { Interval = 350 };
+        delay.Tick += (_, _) =>
+        {
+            delay.Stop();
+            delay.Dispose();
+            _service.StartCapture(job);
+        };
+        delay.Start();
     }
 
     private void ShowSettings()
