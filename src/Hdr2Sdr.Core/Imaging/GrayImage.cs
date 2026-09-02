@@ -16,10 +16,17 @@ public sealed class GrayImage
     }
 
     /// <summary>Box-average downsample by an integer factor. Trailing rows/columns that do not fill a box are dropped.</summary>
-    public GrayImage Downsample(int factor)
+    public GrayImage Downsample(int factor) => factor <= 1 ? this : Downsample(factor, 0, 0);
+
+    /// <summary>
+    /// Box-average downsample whose box grid starts at (offsetX, offsetY) instead of (0, 0).
+    /// Output size is (Width - offsetX) / factor by (Height - offsetY) / factor.
+    /// </summary>
+    public GrayImage Downsample(int factor, int offsetX, int offsetY)
     {
-        if (factor <= 1) return this;
-        int nw = Width / factor, nh = Height / factor;
+        if (factor < 1) throw new ArgumentOutOfRangeException(nameof(factor));
+        if (offsetX < 0 || offsetY < 0 || offsetX >= Width || offsetY >= Height) throw new ArgumentOutOfRangeException(nameof(offsetX));
+        int nw = (Width - offsetX) / factor, nh = (Height - offsetY) / factor;
         if (nw == 0 || nh == 0) throw new ArgumentOutOfRangeException(nameof(factor), "Image too small for this downsample factor.");
         var result = new GrayImage(nw, nh);
         float inv = 1f / (factor * factor);
@@ -29,7 +36,7 @@ public sealed class GrayImage
                 float sum = 0f;
                 for (int j = 0; j < factor; j++)
                 {
-                    int row = (y * factor + j) * Width + x * factor;
+                    int row = (offsetY + y * factor + j) * Width + offsetX + x * factor;
                     for (int i = 0; i < factor; i++) sum += Data[row + i];
                 }
                 result.Data[y * nw + x] = sum * inv;

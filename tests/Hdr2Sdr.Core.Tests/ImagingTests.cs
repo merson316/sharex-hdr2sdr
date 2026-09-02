@@ -94,6 +94,17 @@ public class ImagingTests
     }
 
     [Fact]
+    public void Downsample_with_offset_shifts_the_box_grid()
+    {
+        var g = new GrayImage(4, 2);
+        g.Data = new float[] { 0, 1, 2, 3, 4, 5, 6, 7 };
+        var d = g.Downsample(2, 1, 0);
+        Assert.Equal(1, d.Width);
+        Assert.Equal(1, d.Height);
+        Assert.Equal(3.5f, d.Data[0]);   // (1+2+5+6)/4
+    }
+
+    [Fact]
     public void ToRgba8_encodes_srgb_and_sets_alpha()
     {
         var img = new FloatImage(3, 1);
