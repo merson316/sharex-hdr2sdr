@@ -1,5 +1,6 @@
 using Hdr2Sdr.Windows.Display;
 using Hdr2Sdr.Windows.Imaging;
+using Hdr2Sdr.Windows.Helper;
 using Hdr2Sdr.Core.Cli;
 using Hdr2Sdr.Core.Imaging;
 using Hdr2Sdr.Core.Match;
@@ -69,6 +70,35 @@ internal static class Pipeline
         }
 
         var captured = new Dictionary<string, CapturedOutput>(StringComparer.OrdinalIgnoreCase);
+        HelperClient? helper = null;
+        if (settings.UseHelper)
+        {
+            helper = new HelperClient(log.Info);
+            HelperSnapshot? snap = helper.TryGetSnapshot(TimeSpan.FromMilliseconds(200));
+            if (snap != null)
+            {
+                DateTime fileUtc = File.GetLastWriteTimeUtc(input);
+                double ageBeforeFile = (fileUtc - snap.Header.TakenUtc).TotalSeconds;
+                if (ageBeforeFile < -2 || ageBeforeFile > 120)
+                {
+                    log.Info($"helper snapshot ignored: taken {ageBeforeFile:F1} s before the file was written");
+                }
+                else
+                {
+                    for (int i = 0; i < snap.Header.Outputs.Count; i++)
+                    {
+                        Core.Snapshot.SnapshotOutput so = snap.Header.Outputs[i];
+                        OutputHandle? o = set.Outputs.FirstOrDefault(x => x.DeviceName.Equals(so.DeviceName, StringComparison.OrdinalIgnoreCase) && x.Width == so.Width && x.Height == so.Height);
+                        if (o == null) { log.Warn($"helper snapshot output {so.DeviceName} does not match a current output; skipped"); continue; }
+                        FloatImage img = snap.Images[i];
+                        byte[] preview = PixelConvert.ToRgba8(img, PreviewTonemapper(o));
+                        if (opts.DumpDir != null) Dump(opts.DumpDir, $"helper-{i}", img, preview, o);
+                        captured[o.DeviceName] = new CapturedOutput { Output = o, Capture = img, Preview = preview };
+                    }
+                    log.Info($"using helper snapshot taken {ageBeforeFile:F1} s before the file for {captured.Count} outputs");
+                }
+            }
+        }
         var best = new MatchResult(0, 0, -1f);
         Region? bestRegion = null;
         int index = 0;
@@ -84,7 +114,7 @@ internal static class Pipeline
                 .ToList();
             foreach (OutputHandle o in ordered)
             {
-                CapturedOutput? cap = TryCapture(o, index++, opts, log);
+                CapturedOutput? cap = captured.TryGetValue(o.DeviceName, out CapturedOutput? held) ? held : TryCapture(o, index++, opts, log);
                 if (cap == null) continue;
                 captured[o.DeviceName] = cap;
                 MatchResult m = RegionMatcher.FindRobust(template, PixelConvert.ToGray(cap.Preview, o.Width, o.Height));
@@ -237,6 +267,11 @@ internal static class Pipeline
                 log.Error($"clipboard write failed: {e.Message}");
                 return ExitCodes.WriteFailed;
             }
+        }
+        if (helper != null)
+        {
+            helper.ReportRegion(input, region.Left, region.Top, tw, th);
+            helper.Consume();
         }
         return ExitCodes.Ok;
     }
