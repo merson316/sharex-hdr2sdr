@@ -129,6 +129,8 @@ dotnet publish src/Hdr2Sdr.App -c Release -r win-x64 --self-contained false -p:P
 ```
 
 `tools/publish.sh` builds both executables and, on WSL, copies them to `C:\Users\<you>\Tools\hdr2sdr`.
+Without a local SDK, `tools/build-with-docker.sh` runs the same script inside the official .NET SDK
+image and leaves the executables in `dist/`.
 
 Layout: `src/Hdr2Sdr.Core` (colour maths, tonemappers, PNG codec, region matcher, CLI parsing,
 settings, cursor compositing, snapshot protocol), `src/Hdr2Sdr.Windows` (Desktop Duplication via
@@ -147,6 +149,10 @@ JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/H
   mode. (Windows' own Auto HDR/HDR games in borderless mode work.)
 - Captures started without a ShareX hotkey (tray menu, command line) get a live re-capture even with
   the helper running, because there was no key press to freeze on.
+- Anything you draw in ShareX's built-in image editor before the file is saved is lost: the action
+  replaces ShareX's pixels with the re-tonemapped capture, so annotations made in the editor do not
+  survive. Annotate after the fact instead (open the saved file in the editor), or turn the action off
+  for hotkeys that always go through the editor. Preserving editor annotations is a planned fix.
 
 ## License
 
