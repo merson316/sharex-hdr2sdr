@@ -2,7 +2,8 @@ using Hdr2Sdr.Core.Imaging;
 
 namespace Hdr2Sdr.Core.Match;
 
-public readonly record struct MatchResult(int X, int Y, float Score);
+/// <summary>Where a template was found. Coverage is the fraction of the template that agreed on that position (1 = whole template).</summary>
+public readonly record struct MatchResult(int X, int Y, float Score, float Coverage = 1f);
 
 /// <summary>
 /// Locates a template inside a larger image by normalized cross-correlation (NCC), which is invariant
@@ -14,9 +15,78 @@ public static class RegionMatcher
 {
     public const float AcceptThreshold = 0.9f;
     private const float FlatVariance = 1e-6f;
+    private const int MinTile = 48;           // smallest tile edge for tile voting, px
+    private const int TilesPerAxis = 4;
+    private const float TileAccept = 0.8f;    // a tile below this is treated as changed content
+    private const int VoteRadius = 2;         // px; votes closer than this agree
+    private const int MinVotes = 3;
     private const int CoarsePerPhase = 8;     // candidates kept per grid phase at the coarse level
     private const int CoarseCandidates = 40;  // candidates carried from the coarse level (after proximity dedupe)
     private const int MidCandidates = 3;      // candidates carried between the finer levels
+
+    /// <summary>
+    /// Like <see cref="Find"/>, but when the whole template does not match (part of the region changed between
+    /// captures: video, animation, a progress bar) it splits the template into tiles, locates each tile on its
+    /// own and takes the position most tiles agree on. Score is then the mean score of the agreeing tiles and
+    /// Coverage their share of all tiles.
+    /// </summary>
+    public static MatchResult FindRobust(GrayImage template, GrayImage candidate)
+    {
+        MatchResult whole = Find(template, candidate);
+        if (whole.Score >= AcceptThreshold || whole.Score < 0f) return whole;
+        if (template.Width < 2 * MinTile || template.Height < 2 * MinTile) return whole;
+        MatchResult voted = TileVote(template, candidate);
+        return voted.Score > whole.Score ? voted : whole;
+    }
+
+    private static MatchResult TileVote(GrayImage template, GrayImage candidate)
+    {
+        int tileW = Math.Max(MinTile, template.Width / TilesPerAxis);
+        int tileH = Math.Max(MinTile, template.Height / TilesPerAxis);
+        int cols = template.Width / tileW, rows = template.Height / tileH;
+        int total = cols * rows;
+        var votes = new List<(int X, int Y, float Score)>(total);
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                int tx = c * tileW, ty = r * tileH;
+                GrayImage tile = Sub(template, tx, ty, tileW, tileH);
+                if (Stats(tile).Variance < 1e-4f) continue;      // flat tile: cannot locate anything
+                MatchResult m = Find(tile, candidate);
+                if (m.Score < TileAccept) continue;               // changed content
+                int ox = m.X - tx, oy = m.Y - ty;
+                if (ox < 0 || oy < 0 || ox + template.Width > candidate.Width || oy + template.Height > candidate.Height) continue;
+                votes.Add((ox, oy, m.Score));
+            }
+        if (votes.Count < MinVotes) return new MatchResult(0, 0, 0f, 0f);
+
+        // Cluster: pick the vote with the most neighbours within VoteRadius (ties: higher total score).
+        int bestCount = -1;
+        float bestWeight = 0f;
+        List<(int X, int Y, float Score)> bestMembers = new();
+        foreach (var v in votes)
+        {
+            var members = votes.Where(o => Math.Abs(o.X - v.X) <= VoteRadius && Math.Abs(o.Y - v.Y) <= VoteRadius).ToList();
+            float weight = members.Sum(o => o.Score);
+            if (members.Count > bestCount || (members.Count == bestCount && weight > bestWeight))
+            {
+                bestCount = members.Count;
+                bestWeight = weight;
+                bestMembers = members;
+            }
+        }
+        if (bestCount < MinVotes) return new MatchResult(0, 0, 0f, 0f);
+        int x = (int)MathF.Round(bestMembers.Sum(o => o.X * o.Score) / bestWeight);
+        int y = (int)MathF.Round(bestMembers.Sum(o => o.Y * o.Score) / bestWeight);
+        return new MatchResult(x, y, bestWeight / bestCount, (float)bestCount / total);
+    }
+
+    private static GrayImage Sub(GrayImage src, int x, int y, int w, int h)
+    {
+        var t = new GrayImage(w, h);
+        for (int j = 0; j < h; j++) Array.Copy(src.Data, (y + j) * src.Width + x, t.Data, j * w, w);
+        return t;
+    }
 
     public static MatchResult Find(GrayImage template, GrayImage candidate)
     {

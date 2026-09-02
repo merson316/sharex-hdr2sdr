@@ -95,11 +95,14 @@ DisplayConfig, WIC image I/O, Win32 clipboard), `tests/Hdr2Sdr.Core.Tests` (xuni
 
 ## Limitations
 
-- The re-capture happens a fraction of a second after ShareX's; content that changed in between
-  (video frames, animations) differs slightly, and if the region changed a lot the match fails and
-  ShareX's image is kept.
+- ShareX freezes the screen when you press the hotkey and lets you draw the region on that frozen
+  image; the re-capture happens after you finish, so anything that moved in between (video frames,
+  animations) shows its later state. The region is still located correctly as long as part of it
+  stayed put: the matcher splits the region into tiles and takes the position most tiles agree on.
+  If everything changed, the match fails and ShareX's image is kept.
 - The mouse cursor is not included. DRM-protected content captures black.
-- ShareX's completion toast shows up in the re-capture if it overlaps the region.
+- Games in exclusive fullscreen cannot be captured by Desktop Duplication; use borderless windowed
+  mode. (Windows' own Auto HDR/HDR games in borderless mode work.)
 - Windows ships no WebP encoder, so a WebP file is left unchanged (the clipboard is still updated).
 
 ## License

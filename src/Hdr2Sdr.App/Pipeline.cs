@@ -86,8 +86,8 @@ internal static class Pipeline
                 CapturedOutput? cap = TryCapture(o, index++, opts, log);
                 if (cap == null) continue;
                 captured[o.DeviceName] = cap;
-                MatchResult m = RegionMatcher.Find(template, PixelConvert.ToGray(cap.Preview, o.Width, o.Height));
-                log.Info($"match on {o.DeviceName}: ({m.X},{m.Y}) score={m.Score:F4}");
+                MatchResult m = RegionMatcher.FindRobust(template, PixelConvert.ToGray(cap.Preview, o.Width, o.Height));
+                log.Info($"match on {o.DeviceName}: ({m.X},{m.Y}) score={m.Score:F4} coverage={m.Coverage:P0}");
                 if (m.Score > best.Score)
                 {
                     best = m;
@@ -113,8 +113,8 @@ internal static class Pipeline
                     File.WriteAllBytes(Path.Combine(opts.DumpDir, "virtual-preview.png"), Png.EncodeRgba8(canvas.Rgba, canvas.Width, canvas.Height));
                 if (tw <= canvas.Width && th <= canvas.Height)
                 {
-                    MatchResult m = RegionMatcher.Find(template, PixelConvert.ToGray(canvas.Rgba, canvas.Width, canvas.Height));
-                    log.Info($"match on virtual desktop {canvas.Width}x{canvas.Height} at ({canvas.Left},{canvas.Top}): ({m.X},{m.Y}) score={m.Score:F4}");
+                    MatchResult m = RegionMatcher.FindRobust(template, PixelConvert.ToGray(canvas.Rgba, canvas.Width, canvas.Height));
+                    log.Info($"match on virtual desktop {canvas.Width}x{canvas.Height} at ({canvas.Left},{canvas.Top}): ({m.X},{m.Y}) score={m.Score:F4} coverage={m.Coverage:P0}");
                     if (m.Score > best.Score)
                     {
                         best = m;
