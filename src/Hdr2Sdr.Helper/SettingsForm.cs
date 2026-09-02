@@ -197,17 +197,25 @@ public sealed class SettingsForm : Form
     {
         LastRegion? r = _service.Store.LastRegion;
         if (r == null || !File.Exists(r.InputPath)) { _original.Image = null; return; }
-        try
+        Task.Run(() =>
         {
-            var (rgba, w, h) = ImageIO.Load(r.InputPath);
-            _original.Image = BitmapFromRgba(rgba, w, h);
-        }
-        catch (Exception e)
-        {
-            _service.Log.Warn($"preview: cannot load original: {e.Message}");
-        }
+            try
+            {
+                var (rgba, w, h) = ImageIO.Load(r.InputPath);
+                Bitmap bmp = BitmapFromRgba(rgba, w, h);
+                if (IsDisposed) { bmp.Dispose(); return; }
+                BeginInvoke(() => { Image? old = _original.Image; _original.Image = bmp; old?.Dispose(); });
+            }
+            catch (Exception e)
+            {
+                _service.Log.Warn($"preview: cannot load original: {e.Message}");
+            }
+        });
     }
 
+    private int _renderVersion;
+
+    /// <summary>Renders on a background thread so the UI (and anything sharing it) never stalls.</summary>
     private void RenderPreview()
     {
         LastRegion? r = _service.Store.LastRegion;
@@ -218,32 +226,64 @@ public sealed class SettingsForm : Form
             _preview.Image = null;
             return;
         }
+        Settings s = Current().Sanitized(out _);
+        int version = Interlocked.Increment(ref _renderVersion);
+        _previewStatus.Text = "Rendering...";
+        Task.Run(() =>
+        {
+            try
+            {
+                var previewTiles = new List<RgbaImage.Tile>();
+                for (int i = 0; i < snap.Header.Outputs.Count; i++)
+                {
+                    SnapshotOutput o = snap.Header.Outputs[i];
+                    bool intersects = r.Left < o.Left + o.Width && r.Left + r.Width > o.Left && r.Top < o.Top + o.Height && r.Top + r.Height > o.Top;
+                    if (!intersects) continue;
+                    // Only the region needs tonemapping: crop first when the region sits inside this output.
+                    bool inside = r.Left >= o.Left && r.Top >= o.Top && r.Left + r.Width <= o.Left + o.Width && r.Top + r.Height <= o.Top + o.Height;
+                    ITonemapper tm = o.Hdr
+                        ? TonemapperFactory.Create(s.Tonemap, s.ToTonemapParams(o.SdrWhiteNits, o.PeakNits))
+                        : new DesktopTonemapper(new TonemapParams { SdrWhiteNits = o.SdrWhiteNits, PeakNits = o.PeakNits });
+                    if (inside)
+                    {
+                        FloatImage crop = snap.Images[i].Crop(r.Left - o.Left, r.Top - o.Top, r.Width, r.Height);
+                        previewTiles.Add(new RgbaImage.Tile(PixelConvert.ToRgba8(crop, tm), r.Width, r.Height, r.Left, r.Top));
+                        break;
+                    }
+                    previewTiles.Add(new RgbaImage.Tile(PixelConvert.ToRgba8(snap.Images[i], tm), o.Width, o.Height, o.Left, o.Top));
+                }
+                if (previewTiles.Count == 0) { Post(version, null, "The last region is not inside the snapshot."); return; }
+                RgbaImage.Canvas canvas = RgbaImage.Composite(previewTiles);
+                int x = r.Left - canvas.Left, y = r.Top - canvas.Top;
+                if (x < 0 || y < 0 || x + r.Width > canvas.Width || y + r.Height > canvas.Height) { Post(version, null, "The last region is not inside the snapshot."); return; }
+                byte[] rgba = RgbaImage.Crop(canvas.Rgba, canvas.Width, canvas.Height, x, y, r.Width, r.Height);
+                Bitmap bmp = BitmapFromRgba(rgba, r.Width, r.Height);
+                Post(version, bmp, $"Region {r.Width}x{r.Height} at ({r.Left},{r.Top}), captured {(int)(DateTime.UtcNow - snap.Header.TakenUtc).TotalSeconds} s ago. Settings apply to the next capture after Save.");
+            }
+            catch (Exception e)
+            {
+                Post(version, null, "Preview failed: " + e.Message);
+            }
+        });
+    }
+
+    private void Post(int version, Bitmap? bmp, string status)
+    {
+        if (IsDisposed) { bmp?.Dispose(); return; }
         try
         {
-            Settings s = Current().Sanitized(out _);
-            var tiles = new List<FloatImage.Tile>();
-            var previewTiles = new List<RgbaImage.Tile>();
-            for (int i = 0; i < snap.Header.Outputs.Count; i++)
+            BeginInvoke(() =>
             {
-                SnapshotOutput o = snap.Header.Outputs[i];
-                bool intersects = r.Left < o.Left + o.Width && r.Left + r.Width > o.Left && r.Top < o.Top + o.Height && r.Top + r.Height > o.Top;
-                if (!intersects) continue;
-                ITonemapper tm = o.Hdr
-                    ? TonemapperFactory.Create(s.Tonemap, s.ToTonemapParams(o.SdrWhiteNits, o.PeakNits))
-                    : new DesktopTonemapper(new TonemapParams { SdrWhiteNits = o.SdrWhiteNits, PeakNits = o.PeakNits });
-                previewTiles.Add(new RgbaImage.Tile(PixelConvert.ToRgba8(snap.Images[i], tm), o.Width, o.Height, o.Left, o.Top));
-            }
-            if (previewTiles.Count == 0) { _previewStatus.Text = "The last region is not inside the snapshot."; return; }
-            RgbaImage.Canvas canvas = RgbaImage.Composite(previewTiles);
-            int x = r.Left - canvas.Left, y = r.Top - canvas.Top;
-            if (x < 0 || y < 0 || x + r.Width > canvas.Width || y + r.Height > canvas.Height) { _previewStatus.Text = "The last region is not inside the snapshot."; return; }
-            byte[] rgba = RgbaImage.Crop(canvas.Rgba, canvas.Width, canvas.Height, x, y, r.Width, r.Height);
-            _preview.Image = BitmapFromRgba(rgba, r.Width, r.Height);
-            _previewStatus.Text = $"Region {r.Width}x{r.Height} at ({r.Left},{r.Top}), captured {(int)(DateTime.UtcNow - snap.Header.TakenUtc).TotalSeconds} s ago. Settings apply to the next capture after Save.";
+                if (version != _renderVersion) { bmp?.Dispose(); return; }   // a newer render superseded this one
+                Image? old = _preview.Image;
+                _preview.Image = bmp;
+                old?.Dispose();
+                _previewStatus.Text = status;
+            });
         }
-        catch (Exception e)
+        catch (InvalidOperationException)
         {
-            _previewStatus.Text = "Preview failed: " + e.Message;
+            bmp?.Dispose();
         }
     }
 

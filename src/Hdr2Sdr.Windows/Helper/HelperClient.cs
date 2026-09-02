@@ -62,6 +62,40 @@ public sealed class HelperClient
 
     public void Consume() => Fire("{\"op\":\"consume\"}");
 
+    /// <summary>Region crops (output-local rectangle) from every frame the helper recorded after the hotkey.</summary>
+    public List<(int OffsetMs, FloatImage Crop)> GetRingCrops(string deviceName, int left, int top, int width, int height)
+    {
+        var result = new List<(int, FloatImage)>();
+        try
+        {
+            using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.None);
+            pipe.Connect(200);
+            WriteLine(pipe, JsonSerializer.Serialize(new { op = "ring", output = deviceName, left, top, width, height }));
+            using JsonDocument head = JsonDocument.Parse(ReadLine(pipe));
+            int count = head.RootElement.TryGetProperty("count", out JsonElement c) ? c.GetInt32() : 0;
+            for (int i = 0; i < count; i++)
+            {
+                using JsonDocument meta = JsonDocument.Parse(ReadLine(pipe));
+                int offset = meta.RootElement.GetProperty("offsetMs").GetInt32();
+                int w = meta.RootElement.GetProperty("width").GetInt32(), h = meta.RootElement.GetProperty("height").GetInt32();
+                var buf = new byte[w * h * 3 * 2];
+                int read = 0;
+                while (read < buf.Length)
+                {
+                    int n = pipe.Read(buf, read, buf.Length - read);
+                    if (n <= 0) throw new EndOfStreamException("helper closed the pipe early");
+                    read += n;
+                }
+                result.Add((offset, Half16Codec.Decode(buf, w, h)));
+            }
+        }
+        catch (Exception e)
+        {
+            _log($"helper ring unavailable: {e.Message}");
+        }
+        return result;
+    }
+
     public void ReportRegion(string inputPath, int left, int top, int width, int height)
         => Fire(JsonSerializer.Serialize(new { op = "last-region", input = inputPath, left, top, width, height }));
 

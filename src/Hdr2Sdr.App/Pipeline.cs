@@ -16,6 +16,7 @@ internal static class Pipeline
         public required OutputHandle Output { get; init; }
         public required FloatImage Capture { get; init; }
         public required byte[] Preview { get; init; }
+        public bool FromHelper { get; init; }
     }
 
     /// <summary>A rectangle in desktop (virtual screen) coordinates.</summary>
@@ -93,7 +94,7 @@ internal static class Pipeline
                         FloatImage img = snap.Images[i];
                         byte[] preview = PixelConvert.ToRgba8(img, PreviewTonemapper(o));
                         if (opts.DumpDir != null) Dump(opts.DumpDir, $"helper-{i}", img, preview, o);
-                        captured[o.DeviceName] = new CapturedOutput { Output = o, Capture = img, Preview = preview };
+                        captured[o.DeviceName] = new CapturedOutput { Output = o, Capture = img, Preview = preview, FromHelper = true };
                     }
                     log.Info($"using helper snapshot taken {ageBeforeFile:F1} s before the file for {captured.Count} outputs");
                 }
@@ -190,8 +191,39 @@ internal static class Pipeline
         }
 
         byte[] result;
+        FloatImage? hdrRegionOverride = null;
         CapturedOutput? container = hits.FirstOrDefault(c => region.IsInside(c.Output));
-        if (container != null)
+        if (container != null && container.FromHelper && helper != null && container.Output.Hdr)
+        {
+            // The frozen frame predates ShareX's own capture slightly; pick the recorded frame that matches best.
+            int lx = region.Left - container.Output.Left, ly = region.Top - container.Output.Top;
+            List<(int OffsetMs, FloatImage Crop)> ring = helper.GetRingCrops(container.Output.DeviceName, lx, ly, tw, th);
+            if (ring.Count > 0)
+            {
+                DesktopTonemapper previewTm = PreviewTonemapper(container.Output);
+                float Score(FloatImage crop) => RegionMatcher.Find(template, PixelConvert.ToGray(PixelConvert.ToRgba8(crop, previewTm), tw, th)).Score;
+                float bestScore = Score(container.Capture.Crop(lx, ly, tw, th));
+                int bestOffset = 0;
+                FloatImage? bestCrop = null;
+                var report = new List<string> { $"hotkey:{bestScore:F4}" };
+                foreach (var (offset, crop) in ring)
+                {
+                    float sc = Score(crop);
+                    report.Add($"+{offset}ms:{sc:F4}");
+                    if (sc > bestScore + 0.0005f) { bestScore = sc; bestOffset = offset; bestCrop = crop; }
+                }
+                log.Info($"frame alignment ({string.Join(" ", report)}) -> {(bestCrop == null ? "hotkey frame" : $"+{bestOffset} ms")}");
+                if (bestCrop != null) hdrRegionOverride = bestCrop;
+            }
+        }
+        if (hdrRegionOverride != null && container != null)
+        {
+            ITonemapper tm = customTonemap
+                ? TonemapperFactory.Create(settings.Tonemap, settings.ToTonemapParams(container.Output.SdrWhiteNits, container.Output.MaxLuminance))
+                : PreviewTonemapper(container.Output);
+            result = PixelConvert.ToRgba8(hdrRegionOverride, tm);
+        }
+        else if (container != null)
         {
             RgbaImage.Tile t = tiles.First(t => t.Left == container.Output.Left && t.Top == container.Output.Top);
             result = RgbaImage.Crop(t.Rgba, t.Width, t.Height, region.Left - t.Left, region.Top - t.Top, tw, th);
@@ -236,7 +268,11 @@ internal static class Pipeline
             try
             {
                 FloatImage hdrRegion;
-                if (container != null)
+                if (hdrRegionOverride != null)
+                {
+                    hdrRegion = hdrRegionOverride;
+                }
+                else if (container != null)
                 {
                     hdrRegion = container.Capture.Crop(region.Left - container.Output.Left, region.Top - container.Output.Top, tw, th);
                 }

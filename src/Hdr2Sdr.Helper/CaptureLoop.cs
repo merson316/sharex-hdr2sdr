@@ -36,6 +36,13 @@ public sealed class CaptureLoop : IDisposable
     private OutduplPointerPosition _pointer;
     private CursorShape? _cursor;
 
+    // Frames recorded right after a hotkey so the action can pick the one ShareX actually captured.
+    private readonly List<(ID3D11Texture2D Tex, DateTime Utc)> _ring = new();
+    private volatile bool _recording;
+    private DateTime _recordUntil;
+    private DateTime _recordStart;
+    private int _ringMax;
+
     public bool Frozen { get => _frozen; set => _frozen = value; }
     public bool HasFrame => _hasLatest;
     public DateTime LatestUtc => _latestUtc;
@@ -75,17 +82,34 @@ public sealed class CaptureLoop : IDisposable
                 {
                     if (info.LastMouseUpdateTime != 0) _pointer = info.PointerPosition;
                     if (info.PointerShapeBufferSize > 0) ReadPointerShape(info.PointerShapeBufferSize);
-                    if (!_frozen && (info.LastPresentTime != 0 || info.AccumulatedFrames > 0))
+                    bool presented = info.LastPresentTime != 0 || info.AccumulatedFrames > 0;
+                    if (presented && (!_frozen || _recording))
                     {
                         using ID3D11Texture2D tex = resource!.QueryInterface<ID3D11Texture2D>();
                         lock (_gpu)
                         {
-                            EnsureLatest(tex.Description);
-                            _context!.CopyResource(_latest!, tex);
-                            _hasLatest = true;
-                            _latestUtc = DateTime.UtcNow;
+                            if (!_frozen)
+                            {
+                                EnsureLatest(tex.Description);
+                                _context!.CopyResource(_latest!, tex);
+                                _hasLatest = true;
+                                _latestUtc = DateTime.UtcNow;
+                            }
+                            if (_recording)
+                            {
+                                DateTime now = DateTime.UtcNow;
+                                if (now <= _recordUntil && _ring.Count < _ringMax)
+                                {
+                                    Texture2DDescription d = tex.Description;
+                                    var copy = _device!.CreateTexture2D(new Texture2DDescription(d.Format, d.Width, d.Height, 1, 1, BindFlags.ShaderResource, ResourceUsage.Default, CpuAccessFlags.None));
+                                    _context!.CopyResource(copy, tex);
+                                    _ring.Add((copy, now));
+                                }
+                                else _recording = false;
+                            }
                         }
                     }
+                    else if (_recording && DateTime.UtcNow > _recordUntil) _recording = false;
                 }
                 finally
                 {
@@ -113,10 +137,67 @@ public sealed class CaptureLoop : IDisposable
         _log.Info($"{Output.DeviceName}: duplication open");
     }
 
+    /// <summary>Freezes "latest" and records every presented frame for the next window into the ring.</summary>
+    public void BeginRecording(int windowMs, int maxFrames)
+    {
+        lock (_gpu)
+        {
+            ClearRingLocked();
+            _frozen = true;
+            _recordStart = DateTime.UtcNow;
+            _recordUntil = _recordStart.AddMilliseconds(windowMs);
+            _ringMax = Math.Max(0, maxFrames);
+            _recording = windowMs > 0 && maxFrames > 0;
+        }
+    }
+
+    public int RingCount { get { lock (_gpu) return _ring.Count; } }
+
+    public void ClearRing() { lock (_gpu) ClearRingLocked(); }
+
+    private void ClearRingLocked()
+    {
+        _recording = false;
+        foreach (var r in _ring) r.Tex.Dispose();
+        _ring.Clear();
+    }
+
+    /// <summary>
+    /// Converts the given output-local rectangle from every recorded frame. Offsets are milliseconds after
+    /// the hotkey. Only unrotated outputs are supported (the rectangle is in texture space).
+    /// </summary>
+    public List<(int OffsetMs, FloatImage Crop)> RingCrops(int x, int y, int w, int h)
+    {
+        var result = new List<(int, FloatImage)>();
+        if (Output.Rotation != ModeRotation.Identity && Output.Rotation != ModeRotation.Unspecified) return result;
+        lock (_gpu)
+        {
+            if (_device == null || _context == null || _ring.Count == 0) return result;
+            if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > (int)_latestDesc.Width || y + h > (int)_latestDesc.Height) return result;
+            var stagingDesc = new Texture2DDescription(_latestDesc.Format, (uint)w, (uint)h, 1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read);
+            using ID3D11Texture2D staging = _device.CreateTexture2D(stagingDesc);
+            foreach (var (tex, utc) in _ring)
+            {
+                _context.CopySubresourceRegion(staging, 0, 0, 0, 0, tex, 0, new Vortice.Mathematics.Box(x, y, 0, x + w, y + h, 1));
+                MappedSubresource map = _context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+                try
+                {
+                    result.Add(((int)(utc - _recordStart).TotalMilliseconds, FrameConverter.ToScRgb(map.DataPointer, (int)map.RowPitch, w, h, _latestDesc.Format, ModeRotation.Identity)));
+                }
+                finally
+                {
+                    _context.Unmap(staging, 0);
+                }
+            }
+        }
+        return result;
+    }
+
     private void Close()
     {
         lock (_gpu)
         {
+            ClearRingLocked();
             _hasLatest = false;
             _latest?.Dispose(); _latest = null;
             _dup?.Dispose(); _dup = null;

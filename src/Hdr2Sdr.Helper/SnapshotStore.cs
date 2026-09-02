@@ -34,11 +34,10 @@ public sealed class SnapshotStore
         }
     }
 
-    /// <summary>Freezes every loop, copies their latest frames, unfreezes. Returns how long it took.</summary>
+    /// <summary>Copies every loop's frozen "latest" frame (frozen by BeginRecording at the hotkey), then unfreezes. Ring frames keep recording.</summary>
     public TimeSpan Take(IReadOnlyList<CaptureLoop> loops, bool includeCursor)
     {
         var sw = Stopwatch.StartNew();
-        foreach (CaptureLoop l in loops) l.Frozen = true;
         try
         {
             var outputs = new List<SnapshotOutput>();
@@ -65,13 +64,14 @@ public sealed class SnapshotStore
         return sw.Elapsed;
     }
 
-    public void Consume()
+    public void Consume(IReadOnlyList<CaptureLoop> loops)
     {
         lock (_lock)
         {
             if (_current != null) LastForPreview = _current;
             _current = null;
         }
+        foreach (CaptureLoop l in loops) l.ClearRing();
     }
 }
 

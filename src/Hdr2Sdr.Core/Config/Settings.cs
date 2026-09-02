@@ -19,6 +19,10 @@ public sealed record Settings
     /// <summary>none or jxr.</summary>
     public string HdrSidecar { get; init; } = "none";
     public bool UseHelper { get; init; } = true;
+    /// <summary>How long after the hotkey the helper keeps recording frames for alignment with ShareX's capture.</summary>
+    public int HelperRingMs { get; init; } = 250;
+    /// <summary>Maximum frames recorded in that window (GPU memory: one full frame each).</summary>
+    public int HelperRingFrames { get; init; } = 12;
 
     public const int WebpLossless = 101;
     public static readonly string[] CursorModes = { "auto", "on", "off" };
@@ -41,6 +45,8 @@ public sealed record Settings
         else s = s with { Cursor = s.Cursor.ToLowerInvariant() };
         if (!SidecarModes.Contains(s.HdrSidecar.ToLowerInvariant())) { fixes.Add($"hdrSidecar '{s.HdrSidecar}' -> none"); s = s with { HdrSidecar = "none" }; }
         else s = s with { HdrSidecar = s.HdrSidecar.ToLowerInvariant() };
+        if (s.HelperRingMs < 0 || s.HelperRingMs > 2000) { fixes.Add($"helperRingMs {s.HelperRingMs} -> clamped"); s = s with { HelperRingMs = Math.Clamp(s.HelperRingMs, 0, 2000) }; }
+        if (s.HelperRingFrames < 1 || s.HelperRingFrames > 60) { fixes.Add($"helperRingFrames {s.HelperRingFrames} -> clamped"); s = s with { HelperRingFrames = Math.Clamp(s.HelperRingFrames, 1, 60) }; }
         return s;
     }
 

@@ -13,13 +13,15 @@ public sealed class PipeServer : IDisposable
 {
     public const string PipeName = "hdr2sdr-helper";
     private readonly SnapshotStore _store;
+    private readonly Func<IReadOnlyList<CaptureLoop>> _loops;
     private readonly Func<string> _status;
     private readonly HelperLog _log;
     private readonly CancellationTokenSource _cts = new();
 
-    public PipeServer(SnapshotStore store, Func<string> status, HelperLog log)
+    public PipeServer(SnapshotStore store, Func<IReadOnlyList<CaptureLoop>> loops, Func<string> status, HelperLog log)
     {
         _store = store;
+        _loops = loops;
         _status = status;
         _log = log;
     }
@@ -71,9 +73,25 @@ public sealed class PipeServer : IDisposable
                         break;
                     }
                     case "consume":
-                        _store.Consume();
+                        _store.Consume(_loops());
                         await WriteLine(pipe, "{\"ok\":true}");
                         break;
+                    case "ring":
+                    {
+                        JsonElement r = doc.RootElement;
+                        string device = r.GetProperty("output").GetString() ?? "";
+                        CaptureLoop? loop = _loops().FirstOrDefault(l => l.Output.DeviceName.Equals(device, StringComparison.OrdinalIgnoreCase));
+                        var crops = loop?.RingCrops(r.GetProperty("left").GetInt32(), r.GetProperty("top").GetInt32(), r.GetProperty("width").GetInt32(), r.GetProperty("height").GetInt32())
+                                    ?? new List<(int, Core.Imaging.FloatImage)>();
+                        await WriteLine(pipe, JsonSerializer.Serialize(new { ok = true, count = crops.Count }));
+                        foreach (var (offset, crop) in crops)
+                        {
+                            await WriteLine(pipe, JsonSerializer.Serialize(new { offsetMs = offset, width = crop.Width, height = crop.Height }));
+                            await pipe.WriteAsync(Half16Codec.Encode(crop));
+                        }
+                        await pipe.FlushAsync();
+                        break;
+                    }
                     case "last-region":
                     {
                         JsonElement r = doc.RootElement;

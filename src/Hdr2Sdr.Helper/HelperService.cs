@@ -24,7 +24,7 @@ public sealed class HelperService : IDisposable
     public void Start()
     {
         StartLoops();
-        _pipe = new PipeServer(Store, StatusText, Log);
+        _pipe = new PipeServer(Store, () => Loops, StatusText, Log);
         _pipe.Start();
         Log.Info("helper started");
     }
@@ -61,15 +61,16 @@ public sealed class HelperService : IDisposable
 
     private void OnHotkey(Core.Snapshot.HotkeyCombo combo)
     {
-        // Runs on the hook thread: freeze immediately, then snapshot on the pool so the hook returns at once.
-        foreach (CaptureLoop l in Loops) l.Frozen = true;
+        // Runs on the hook thread: freeze and start the ring immediately, then snapshot on the pool so the hook returns at once.
+        var (settings, _) = Core.Config.SettingsFile.Load(ShareXPaths.SettingsPath);
+        foreach (CaptureLoop l in Loops) l.BeginRecording(settings.HelperRingMs, settings.HelperRingFrames);
         Task.Run(() =>
         {
             try
             {
                 bool cursor = CursorPolicy.IncludeCursor(ShareXPaths.SettingsPath, ShareXPaths.ApplicationConfig);
                 Store.Take(Loops, cursor);
-                Log.Info($"hotkey {combo.Job}: snapshot taken (cursor={cursor})");
+                Log.Info($"hotkey {combo.Job}: snapshot taken (cursor={cursor}), recording {settings.HelperRingMs} ms / {settings.HelperRingFrames} frames");
             }
             catch (Exception e)
             {

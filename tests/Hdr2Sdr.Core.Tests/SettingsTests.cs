@@ -20,6 +20,8 @@ public class SettingsTests
         Assert.Equal("auto", s.Cursor);
         Assert.Equal("none", s.HdrSidecar);
         Assert.True(s.UseHelper);
+        Assert.Equal(250, s.HelperRingMs);
+        Assert.Equal(12, s.HelperRingFrames);
     }
 
     [Fact]
