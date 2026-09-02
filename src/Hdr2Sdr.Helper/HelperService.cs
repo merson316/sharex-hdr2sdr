@@ -74,7 +74,6 @@ public sealed class HelperService : IDisposable
     {
         (Settings, string? err) = Core.Config.SettingsFile.Load(ShareXPaths.SettingsPath);
         if (err != null) Log.Warn("settings: " + err);
-        Hotkeys.KeyboardHookEnabled = Settings.InterceptHotkeys;
         ApplyOverlay();
     }
 
@@ -88,11 +87,9 @@ public sealed class HelperService : IDisposable
     private void ApplyOverlay()
     {
         if (_ui == null) return;
-        bool want = Settings.InterceptHotkeys;
         void Apply()
         {
-            if (want && _overlay == null) _overlay = new OverlayController(this, _ui);
-            else if (!want && _overlay != null) { _overlay.Dispose(); _overlay = null; }
+            _overlay ??= new OverlayController(this, _ui);
         }
         if (_ui.InvokeRequired) _ui.BeginInvoke(Apply); else Apply();
     }
@@ -109,7 +106,7 @@ public sealed class HelperService : IDisposable
     {
         if (Paused) return "paused: ShareX captures on its own";
         int ready = Loops.Count(l => l.HasFrame);
-        string hook = Hotkeys.Installed ? $"{Hotkeys.ComboCount} ShareX hotkeys intercepted" : (Hotkeys.KeyboardHookEnabled ? "hotkey hook unavailable" : "hotkeys not intercepted");
+        string hook = Hotkeys.Installed ? $"{Hotkeys.ComboCount} ShareX hotkeys intercepted" : "hotkey hook unavailable";
         string last = LastCaptureUtc == default ? "no capture yet" : $"last capture {(int)(DateTime.UtcNow - LastCaptureUtc).TotalSeconds} s ago";
         return $"{hook}; {ready}/{Loops.Count} HDR/SDR outputs live; {last}";
     }

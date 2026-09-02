@@ -12,8 +12,6 @@ public sealed record Settings
     public float? SdrWhiteNits { get; init; }
     /// <summary>null = the peak luminance the monitor reports.</summary>
     public float? PeakNits { get; init; }
-    /// <summary>Intercept ShareX's capture hotkeys (the overlay needs this). Off = ShareX captures on its own.</summary>
-    public bool InterceptHotkeys { get; init; } = true;
 
     /// <summary>Clamps every field into its valid range; returns what was changed (empty when nothing).</summary>
     public Settings Sanitized(out List<string> fixes)

@@ -23,7 +23,6 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _peakOverride = new() { Text = "Override peak (nits)", AutoSize = true };
     private readonly NumericUpDown _peak = new() { Minimum = 100, Maximum = 10000, Width = 70 };
     private readonly Label _monitorInfo = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
-    private readonly CheckBox _intercept = new() { Text = "Intercept ShareX hotkeys and show the corrected frame before ShareX captures", AutoSize = true };
     private readonly CheckBox _startup = new() { Text = "Start at logon (scheduled task)", AutoSize = true };
     private readonly PictureBox _preview = new() { SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.Black, Dock = DockStyle.Fill };
     private readonly Label _previewStatus = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
@@ -60,7 +59,6 @@ public sealed class SettingsForm : Form
         Row("", _sdrOverride, _sdrWhite);
         Row("", _peakOverride, _peak);
         Row("", _monitorInfo);
-        Row("", _intercept);
         Row("", _startup);
 
         var previewPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(10) };
@@ -113,7 +111,6 @@ public sealed class SettingsForm : Form
         Knee = _kneeBar.Value / 100f,
         SdrWhiteNits = _sdrOverride.Checked ? (float)_sdrWhite.Value : null,
         PeakNits = _peakOverride.Checked ? (float)_peak.Value : null,
-        InterceptHotkeys = _intercept.Checked,
     };
 
     private new void Load()
@@ -129,7 +126,6 @@ public sealed class SettingsForm : Form
         _sdrWhite.Value = (decimal)Math.Clamp(s.SdrWhiteNits ?? 200f, 40f, 2000f);
         _peakOverride.Checked = s.PeakNits != null;
         _peak.Value = (decimal)Math.Clamp(s.PeakNits ?? 1000f, 100f, 10000f);
-        _intercept.Checked = s.InterceptHotkeys;
         _startup.Checked = StartupTask.IsInstalled();
         _sdrWhite.Enabled = _sdrOverride.Checked;
         _peak.Enabled = _peakOverride.Checked;

@@ -57,7 +57,7 @@ ShareX makes them.
 Double-click the tray icon. Everything is stored in `%LOCALAPPDATA%\hdr2sdr\settings.json`:
 
 ```json
-{ "tonemap": "desktop", "exposure": 1.0, "knee": 1.0, "sdrWhiteNits": null, "peakNits": null, "interceptHotkeys": true }
+{ "tonemap": "desktop", "exposure": 1.0, "knee": 1.0, "sdrWhiteNits": null, "peakNits": null }
 ```
 
 - **desktop** (default): scales the frame so Windows' SDR white level maps to white. Everything at or
@@ -75,8 +75,8 @@ The dialog previews the last frozen frame re-tonemapped live as you move the sli
 
 The app installs a low-level keyboard hook to notice ShareX's hotkeys. It only compares each key-down
 against the combinations read from ShareX's own `HotkeysConfig.json`; keys are never stored or logged.
-Frames live in memory only. Pause it from the tray menu whenever you like, or untick "Intercept ShareX
-hotkeys" in the settings. Log: `%LOCALAPPDATA%\hdr2sdr\helper.log`.
+Frames live in memory only. Pause it from the tray menu whenever you like, or exit it.
+Log: `%LOCALAPPDATA%\hdr2sdr\helper.log`.
 
 ## Build from source
 

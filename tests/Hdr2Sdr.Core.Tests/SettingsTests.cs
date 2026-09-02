@@ -6,7 +6,7 @@ namespace Hdr2Sdr.Core.Tests;
 public class SettingsTests
 {
     [Fact]
-    public void Defaults_are_exact_sdr_with_hotkeys_intercepted()
+    public void Defaults_are_exact_sdr_with_monitor_values()
     {
         var s = new Settings();
         Assert.Equal("desktop", s.Tonemap);
@@ -14,7 +14,6 @@ public class SettingsTests
         Assert.Equal(1f, s.Knee);
         Assert.Null(s.SdrWhiteNits);
         Assert.Null(s.PeakNits);
-        Assert.True(s.InterceptHotkeys);
     }
 
     [Fact]
@@ -23,7 +22,7 @@ public class SettingsTests
         string path = Path.Combine(Path.GetTempPath(), $"hdr2sdr-settings-{Guid.NewGuid():N}.json");
         try
         {
-            var s = new Settings { Tonemap = "hable", Exposure = 1.5f, Knee = 0.6f, SdrWhiteNits = 203f, InterceptHotkeys = false };
+            var s = new Settings { Tonemap = "hable", Exposure = 1.5f, Knee = 0.6f, SdrWhiteNits = 203f };
             SettingsFile.Save(path, s);
             var (back, error) = SettingsFile.Load(path);
             Assert.Null(error);
