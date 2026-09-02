@@ -31,8 +31,7 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _sidecar = new() { Text = "Also save the raw HDR region as JPEG XR (.jxr)", AutoSize = true };
     private readonly CheckBox _useHelper = new() { Text = "Use helper snapshots (exact frame at the hotkey)", AutoSize = true };
     private readonly CheckBox _startup = new() { Text = "Start helper at logon (scheduled task)", AutoSize = true };
-    private readonly CheckBox _keyboardHook = new() { Text = "Watch ShareX hotkeys with a keyboard hook", AutoSize = true };
-    private readonly CheckBox _overlay = new() { Text = "Overlay mode: show the corrected frame before ShareX captures (recommended; needs the hook)", AutoSize = true };
+    private readonly CheckBox _keyboardHook = new() { Text = "Intercept ShareX hotkeys (overlay mode); off = post-capture correction only", AutoSize = true };
     private readonly NumericUpDown _history = new() { Minimum = 0, Maximum = 1000, Increment = 50, Width = 70 };
     private readonly Label _historyNote = new() { Text = "ms of frame history kept on the GPU (0 = off); aligns tray/CLI captures, ~40 MB VRAM per 16 ms at 4K", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly PictureBox _original = new() { SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle, BackColor = Color.Black };
@@ -75,7 +74,6 @@ public sealed class SettingsForm : Form
         Row("JPEG quality", _jpeg);
         Row("WebP quality", _webp, _webpLossless);
         Row("", _sidecar);
-        Row("", _overlay);
         Row("", _useHelper);
         Row("", _keyboardHook);
         Row("Frame history", _history, _historyNote);
@@ -148,7 +146,6 @@ public sealed class SettingsForm : Form
         HdrSidecar = _sidecar.Checked ? "jxr" : "none",
         UseHelper = _useHelper.Checked,
         HelperKeyboardHook = _keyboardHook.Checked,
-        OverlayMode = _overlay.Checked,
         HelperHistoryMs = (int)_history.Value,
         CarryAnnotations = _carry,
         HelperRingMs = _ringMs,
@@ -177,7 +174,6 @@ public sealed class SettingsForm : Form
         _sidecar.Checked = s.HdrSidecar == "jxr";
         _useHelper.Checked = s.UseHelper;
         _keyboardHook.Checked = s.HelperKeyboardHook;
-        _overlay.Checked = s.OverlayMode;
         _history.Value = Math.Clamp(s.HelperHistoryMs, 0, 1000);
         _carry = s.CarryAnnotations; _ringMs = s.HelperRingMs; _ringFrames = s.HelperRingFrames;   // not shown, preserved on save
         _startup.Checked = StartupTask.IsInstalled();

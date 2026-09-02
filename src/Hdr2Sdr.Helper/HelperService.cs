@@ -51,7 +51,7 @@ public sealed class HelperService : IDisposable
 
     private void ApplyOverlaySetting()
     {
-        bool want = OverlayOverride ?? (_settings.OverlayMode && _settings.HelperKeyboardHook);
+        bool want = OverlayOverride ?? _settings.HelperKeyboardHook;   // overlay mode is how the helper works whenever it can see the hotkeys
         if (_ui == null) return;
         void Apply()
         {

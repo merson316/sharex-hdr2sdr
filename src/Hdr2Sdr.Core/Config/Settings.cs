@@ -33,11 +33,6 @@ public sealed record Settings
     public int HelperHistoryMs { get; init; } = 0;
     /// <summary>Watch ShareX's own hotkeys with a low-level keyboard hook (off = rely on the region-window watcher and history).</summary>
     public bool HelperKeyboardHook { get; init; } = true;
-    /// <summary>
-    /// Overlay mode: on a ShareX hotkey the helper shows the corrected SDR frame on screen and starts the ShareX job
-    /// itself, so ShareX captures correct pixels and every ShareX feature works unchanged. Needs the keyboard hook.
-    /// </summary>
-    public bool OverlayMode { get; init; } = true;
 
     public const int WebpLossless = 101;
     public static readonly string[] CursorModes = { "auto", "on", "off" };

@@ -66,7 +66,7 @@ re-tonemaps your last capture live as you move the sliders:
   "sdrWhiteNits": null, "peakNits": null,
   "jpegQuality": 0.9, "webpQuality": 90,
   "cursor": "auto", "hdrSidecar": "none", "carryAnnotations": true,
-  "useHelper": true, "helperKeyboardHook": true, "overlayMode": true,
+  "useHelper": true, "helperKeyboardHook": true,
   "helperRingMs": 250, "helperRingFrames": 12, "helperHistoryMs": 0
 }
 ```
@@ -81,7 +81,7 @@ Windows Photos shows in HDR. `webpQuality: 101` means lossless.
 The helper keeps a Desktop Duplication session open per monitor and watches ShareX's own capture
 hotkeys (read from ShareX's `HotkeysConfig.json`).
 
-**Overlay mode** (default): the hotkey is intercepted, the frozen HDR frame is tonemapped with your
+**Overlay mode** (how the helper works whenever its hotkey hook is active): the hotkey is intercepted, the frozen HDR frame is tonemapped with your
 settings and shown in a borderless window over each HDR monitor, and after two composed frames the
 helper starts the same ShareX job through ShareX's command line. ShareX's own capture then contains
 the corrected image; its region selector, editor and everything downstream work on it, and the action
@@ -89,9 +89,9 @@ sees the result and leaves it alone. The overlay disappears as soon as ShareX's 
 (about 0.3 s). Jobs started this way use ShareX's default task settings rather than per-hotkey
 overrides.
 
-**Post-capture mode** (`overlayMode: false`, or captures started without a hotkey): the hotkey passes
-through to ShareX, the helper only freezes the frame, and the action re-tonemaps ShareX's file after
-the fact as described above. Without the helper, the action re-captures the screen when it runs.
+**Post-capture mode** (hook disabled or paused, or captures started without a hotkey): the hotkey
+passes through to ShareX, the helper only freezes the frame, and the action re-tonemaps ShareX's file
+after the fact as described above. Without the helper, the action re-captures the screen when it runs.
 
 After the trigger the helper keeps recording for `helperRingMs` (up to `helperRingFrames` frames on the
 GPU) and the action picks the recorded frame that matches ShareX's capture best, so the two line up to
