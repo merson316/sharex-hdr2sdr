@@ -162,3 +162,166 @@ public class AnnotationRecoveryToneTests
         Assert.Equal(0, res.Pixels);
     }
 }
+
+public class AnnotationRecoverySoftEditTests
+{
+    private const int W = 160, H = 96;
+
+    /// <summary>Text-like SDR content: thin dark lines every 6 px on a flat light background.</summary>
+    private static (byte[] Render, FloatImage Region) Scene(int seed = 5)
+    {
+        var render = new byte[W * H * 4];
+        var region = new FloatImage(W, H);
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int i = y * W + x;
+                byte v = (byte)((x % 6 == 0 || y % 6 == 0) ? 40 : 220);
+                render[i * 4] = v; render[i * 4 + 1] = v; render[i * 4 + 2] = v; render[i * 4 + 3] = 255;
+                region.Data[i * 3] = region.Data[i * 3 + 1] = region.Data[i * 3 + 2] = 0.6f;
+            }
+        return (render, region);
+    }
+
+    private static void AssertBlurredAreaMatches(byte[] expected, byte[] actual, int x0, int y0, int w, int h, int tolerance)
+    {
+        int worst = 0;
+        for (int y = y0 + 4; y < y0 + h - 4; y++)
+            for (int x = x0 + 4; x < x0 + w - 4; x++)
+                worst = Math.Max(worst, Math.Abs(expected[(y * W + x) * 4] - actual[(y * W + x) * 4]));
+        Assert.True(worst <= tolerance, $"blurred area differs from ShareX's blur by up to {worst} levels");
+    }
+
+    private static byte[] BoxBlur(byte[] src, int x0, int y0, int w, int h, int radius)
+    {
+        var o = (byte[])src.Clone();
+        for (int y = y0; y < y0 + h; y++)
+            for (int x = x0; x < x0 + w; x++)
+                for (int c = 0; c < 3; c++)
+                {
+                    int sum = 0, cnt = 0;
+                    for (int j = -radius; j <= radius; j++)
+                        for (int i = -radius; i <= radius; i++)
+                        {
+                            int xx = Math.Clamp(x + i, 0, W - 1), yy = Math.Clamp(y + j, 0, H - 1);
+                            sum += src[(yy * W + xx) * 4 + c]; cnt++;
+                        }
+                    o[(y * W + x) * 4 + c] = (byte)(sum / cnt);
+                }
+        return o;
+    }
+
+    [Fact]
+    public void Blurred_rectangle_is_carried_over()
+    {
+        var (render, region) = Scene();
+        byte[] sharex = BoxBlur(render, 32, 24, 64, 40, radius: 3);
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.InRange(res.Pixels, 64 * 40 * 0.8, (64 + 16) * (40 + 16));
+        AssertBlurredAreaMatches(sharex, res.Rgba, 32, 24, 64, 40, tolerance: 2);   // whole area blurred, not just the strokes
+        int outside = ((5 * W) + 5) * 4;
+        Assert.Equal(render[outside], res.Rgba[outside]);
+    }
+
+    [Fact]
+    public void Compression_noise_does_not_look_like_blur()
+    {
+        var (render, region) = Scene();
+        var sharex = (byte[])render.Clone();
+        var rng = new Random(9);
+        for (int i = 0; i < sharex.Length; i += 4)
+        {
+            int nz = rng.Next(-12, 13);
+            for (int c = 0; c < 3; c++) sharex[i + c] = (byte)Math.Clamp(sharex[i + c] + nz, 0, 255);
+        }
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.Equal(0, res.Pixels);
+    }
+
+    [Fact]
+    public void Blur_is_found_under_a_global_tone_shift_and_mapped_back()
+    {
+        var (render, region) = Scene();
+        byte[] shifted = (byte[])render.Clone();
+        for (int i = 0; i < shifted.Length; i += 4)
+            for (int c = 0; c < 3; c++) shifted[i + c] = (byte)Math.Round(255.0 * Math.Pow(shifted[i + c] / 255.0, 1.25));
+        byte[] sharex = BoxBlur(shifted, 32, 24, 64, 40, radius: 3);
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.InRange(res.Pixels, 64 * 40 * 0.8, (64 + 16) * (40 + 16));
+        // copied pixels are mapped back to our tone: close to a blur of our render, not to ShareX's darker values
+        byte[] expected = BoxBlur(render, 32, 24, 64, 40, radius: 3);
+        AssertBlurredAreaMatches(expected, res.Rgba, 32, 24, 64, 40, tolerance: 16);
+    }
+}
+
+public class AnnotationRecoverySoftEditHdrTests
+{
+    private const int W = 160, H = 96;
+
+    /// <summary>Sparse bright specular dots (HDR, above SDR white) on a dark object, like droplets on the bottle.</summary>
+    private static (byte[] Render, FloatImage Region) HdrScene()
+    {
+        var render = new byte[W * H * 4];
+        var region = new FloatImage(W, H);
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int i = y * W + x;
+                bool dot = x % 8 == 3 && y % 8 == 5;
+                byte v = (byte)(dot ? 255 : 30);
+                render[i * 4] = v; render[i * 4 + 1] = v; render[i * 4 + 2] = v; render[i * 4 + 3] = 255;
+                float lin = dot ? 6f : 0.03f;   // 6.0 scRGB = far above a 2.5 SDR white
+                region.Data[i * 3] = region.Data[i * 3 + 1] = region.Data[i * 3 + 2] = lin;
+            }
+        return (render, region);
+    }
+
+    private static byte[] BoxBlur(byte[] src, int x0, int y0, int w, int h, int radius)
+    {
+        var o = (byte[])src.Clone();
+        for (int y = y0; y < y0 + h; y++)
+            for (int x = x0; x < x0 + w; x++)
+                for (int c = 0; c < 3; c++)
+                {
+                    int sum = 0, cnt = 0;
+                    for (int j = -radius; j <= radius; j++)
+                        for (int i = -radius; i <= radius; i++)
+                        {
+                            int xx = Math.Clamp(x + i, 0, W - 1), yy = Math.Clamp(y + j, 0, H - 1);
+                            sum += src[(yy * W + xx) * 4 + c]; cnt++;
+                        }
+                    o[(y * W + x) * 4 + c] = (byte)(sum / cnt);
+                }
+        return o;
+    }
+
+    [Fact]
+    public void Blur_over_hdr_highlights_is_carried_over()
+    {
+        var (render, region) = HdrScene();
+        byte[] sharex = BoxBlur(render, 32, 24, 64, 40, radius: 4);
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.True(res.Pixels >= 64 * 40 * 0.8, $"pixels {res.Pixels}");
+        // a dot inside the blurred area must not stay sharp
+        int dot = ((5 + 8 * 4) * W + (3 + 8 * 5)) * 4;   // (43, 37) is a dot inside the rect
+        Assert.True(res.Rgba[dot] < 120, $"dot still sharp: {res.Rgba[dot]}");
+        int outsideDot = ((5 * W) + 3) * 4;
+        Assert.Equal(255, res.Rgba[outsideDot]);
+    }
+
+    [Fact]
+    public void Different_video_frame_is_not_mistaken_for_blur()
+    {
+        var (render, region) = HdrScene();
+        // ShareX's frame has the same kind of detail but shifted (content moved): energy preserved, means differ a lot at dots
+        var sharex = new byte[render.Length];
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int src = (y * W + (x + 4) % W) * 4, dst = (y * W + x) * 4;
+                Array.Copy(render, src, sharex, dst, 4);
+            }
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.Equal(0, res.Pixels);
+    }
+}
