@@ -6,7 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
-    <AssemblyName>hdr2sdr-helper</AssemblyName>
+    <AssemblyName>hdr2sdr</AssemblyName>
     <RootNamespace>Hdr2Sdr.Helper</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishSingleFile>true</PublishSingleFile>

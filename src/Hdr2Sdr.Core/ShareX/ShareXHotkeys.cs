@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Hdr2Sdr.Core.Snapshot;
+namespace Hdr2Sdr.Core.ShareX;
 
 /// <summary>A ShareX hotkey as virtual-key code plus modifier flags.</summary>
 public readonly record struct HotkeyCombo(int VirtualKey, bool Ctrl, bool Shift, bool Alt, bool Win, string Job)

@@ -1,30 +1,22 @@
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
-using Hdr2Sdr.Core.Snapshot;
 
 namespace Hdr2Sdr.Helper;
 
-/// <summary>
-/// Named pipe "hdr2sdr-helper". One JSON request line per connection; replies with one JSON line, and for
-/// "get" the per-output half-float pixel blocks follow the header in list order.
-/// </summary>
+/// <summary>Named pipe "hdr2sdr": lets `hdr2sdr.exe --capture &lt;Job&gt;` and status queries reach the running instance.</summary>
 public sealed class PipeServer : IDisposable
 {
-    public const string PipeName = "hdr2sdr-helper";
-    private readonly SnapshotStore _store;
-    private readonly Func<IReadOnlyList<CaptureLoop>> _loops;
+    public const string PipeName = "hdr2sdr";
     private readonly Func<string> _status;
+    private readonly Action<string> _startCapture;
     private readonly HelperLog _log;
     private readonly CancellationTokenSource _cts = new();
-    /// <summary>Starts a capture job through the helper (overlay + ShareX); set by the service.</summary>
-    public Action<string>? StartCapture { get; set; }
 
-    public PipeServer(SnapshotStore store, Func<IReadOnlyList<CaptureLoop>> loops, Func<string> status, HelperLog log)
+    public PipeServer(Func<string> status, Action<string> startCapture, HelperLog log)
     {
-        _store = store;
-        _loops = loops;
         _status = status;
+        _startCapture = startCapture;
         _log = log;
     }
 
@@ -60,56 +52,10 @@ public sealed class PipeServer : IDisposable
                 string op = doc.RootElement.TryGetProperty("op", out JsonElement o) ? o.GetString() ?? "" : "";
                 switch (op)
                 {
-                    case "get":
-                    {
-                        Snapshot? s = _store.Current;
-                        if (s == null) { await WriteLine(pipe, "{\"ok\":false,\"reason\":\"no snapshot\"}"); break; }
-                        await WriteLine(pipe, "{\"ok\":true}");
-                        await WriteLine(pipe, s.Header.ToJson());
-                        for (int i = 0; i < s.Images.Count; i++)
-                        {
-                            byte[] halves = Half16Codec.Encode(s.Images[i]);
-                            await pipe.WriteAsync(halves);
-                        }
-                        await pipe.FlushAsync();
-                        break;
-                    }
-                    case "consume":
-                        _store.Consume(_loops());
-                        await WriteLine(pipe, "{\"ok\":true}");
-                        break;
-                    case "ring":
-                    {
-                        JsonElement r = doc.RootElement;
-                        string device = r.GetProperty("output").GetString() ?? "";
-                        CaptureLoop? loop = _loops().FirstOrDefault(l => l.Output.DeviceName.Equals(device, StringComparison.OrdinalIgnoreCase));
-                        var crops = loop?.RingCrops(r.GetProperty("left").GetInt32(), r.GetProperty("top").GetInt32(), r.GetProperty("width").GetInt32(), r.GetProperty("height").GetInt32())
-                                    ?? new List<(int, Core.Imaging.FloatImage)>();
-                        await WriteLine(pipe, JsonSerializer.Serialize(new { ok = true, count = crops.Count }));
-                        foreach (var (offset, crop) in crops)
-                        {
-                            await WriteLine(pipe, JsonSerializer.Serialize(new { offsetMs = offset, width = crop.Width, height = crop.Height }));
-                            await pipe.WriteAsync(Half16Codec.Encode(crop));
-                        }
-                        await pipe.FlushAsync();
-                        break;
-                    }
-                    case "last-region":
-                    {
-                        JsonElement r = doc.RootElement;
-                        _store.LastRegion = new LastRegion(r.GetProperty("input").GetString() ?? "", r.GetProperty("left").GetInt32(), r.GetProperty("top").GetInt32(),
-                            r.GetProperty("width").GetInt32(), r.GetProperty("height").GetInt32(), DateTime.UtcNow);
-                        await WriteLine(pipe, "{\"ok\":true}");
-                        break;
-                    }
                     case "capture":
-                    {
-                        string job = doc.RootElement.TryGetProperty("job", out JsonElement j) ? j.GetString() ?? "" : "";
-                        if (StartCapture == null) { await WriteLine(pipe, "{\"ok\":false,\"reason\":\"capture not available\"}"); break; }
-                        StartCapture(job);
+                        _startCapture(doc.RootElement.TryGetProperty("job", out JsonElement j) ? j.GetString() ?? "" : "");
                         await WriteLine(pipe, "{\"ok\":true}");
                         break;
-                    }
                     case "status":
                         await WriteLine(pipe, JsonSerializer.Serialize(new { ok = true, status = _status() }));
                         break;

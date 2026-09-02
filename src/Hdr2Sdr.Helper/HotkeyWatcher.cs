@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using Hdr2Sdr.Core.Snapshot;
+using Hdr2Sdr.Core.ShareX;
 
 namespace Hdr2Sdr.Helper;
 

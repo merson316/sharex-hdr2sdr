@@ -19,21 +19,16 @@ jobs:
         with:
           dotnet-version: '9.0.x'
       - run: dotnet test tests/Hdr2Sdr.Core.Tests -c Release
-      - run: dotnet publish src/Hdr2Sdr.App -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/
       - run: dotnet publish src/Hdr2Sdr.Helper -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/
       - uses: actions/upload-artifact@v4
         with:
           name: hdr2sdr
-          path: |
-            dist/hdr2sdr.exe
-            dist/hdr2sdr-helper.exe
+          path: dist/hdr2sdr.exe
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/hdr2sdr.exe
-            dist/hdr2sdr-helper.exe
+          files: dist/hdr2sdr.exe
 
   builder-image:
     # Publishes the reproducible build environment (tools/builder.Dockerfile) to GHCR on every push to main.

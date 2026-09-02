@@ -27,16 +27,5 @@ public static class PixelConvert
         return rgba;
     }
 
-    /// <summary>BT.709 luma of the sRGB-encoded bytes, scaled to [0,1]. Used only for matching.</summary>
-    public static GrayImage ToGray(ReadOnlySpan<byte> rgba, int width, int height)
-    {
-        if (rgba.Length != width * height * 4) throw new ArgumentException("RGBA buffer size does not match dimensions.");
-        var g = new GrayImage(width, height);
-        const float inv = 1f / 255f;
-        for (int i = 0, p = 0; i < width * height; i++, p += 4)
-            g.Data[i] = (0.2126f * rgba[p] + 0.7152f * rgba[p + 1] + 0.0722f * rgba[p + 2]) * inv;
-        return g;
-    }
-
     private static byte ToByte(float v) => (byte)Math.Clamp((int)MathF.Round(v * 255f), 0, 255);
 }

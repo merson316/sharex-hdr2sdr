@@ -12,14 +12,12 @@ internal static class Program
         int captureIndex = Array.IndexOf(args, "--capture");
         if (captureIndex >= 0) return CaptureCommand(captureIndex + 1 < args.Length ? args[captureIndex + 1] : "RectangleRegion");
 
-        using var mutex = new Mutex(true, @"Local\hdr2sdr-helper", out bool first);
+        using var mutex = new Mutex(true, @"Local\hdr2sdr", out bool first);
         if (!first) return 0;   // already running
 
         ApplicationConfiguration.Initialize();
         using var service = new HelperService();
         service.Start();
-        if (args.Contains("--overlay")) service.OverlayOverride = true;
-        if (args.Contains("--no-overlay")) service.OverlayOverride = false;
         using var tray = new TrayApp(service);
         service.Hotkeys.Install();   // hook runs on its own thread
         service.AttachUi(tray.UiControl);
@@ -28,8 +26,8 @@ internal static class Program
     }
 
     /// <summary>
-    /// `hdr2sdr-helper.exe --capture <Job>`: asks the running helper to start the job with the overlay; if no helper
-    /// is running, starts the ShareX job directly (the post-capture action then corrects the file).
+    /// `hdr2sdr.exe --capture <Job>`: asks the running instance to start the job with the overlay; if none is
+    /// running, starts the ShareX job directly.
     /// </summary>
     private static int CaptureCommand(string job)
     {
@@ -45,43 +43,27 @@ internal static class Program
         }
         catch
         {
-            string exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ShareX", "ShareX.exe");
-            if (!File.Exists(exe)) return 1;
-            Process.Start(new ProcessStartInfo(exe, "-" + job) { UseShellExecute = false, CreateNoWindow = true });
-            return 0;
+            return OverlayController.StartShareXJob(job, new HelperLog()) ? 0 : 1;
         }
     }
 
-    /// <summary>Runs the capture loops for two seconds, freezes, takes a snapshot in memory and reports timing. Writes no images.</summary>
+    /// <summary>Runs the capture loops for two seconds, freezes, snapshots each output in memory and reports timing. Writes no images.</summary>
     private static int SelfTest()
     {
         using var service = new HelperService();
         service.StartLoops();
         Thread.Sleep(2000);
-        foreach (CaptureLoop l in service.Loops) Console.WriteLine($"{l.Output.DeviceName}: status={l.Status} hasFrame={l.HasFrame} latest={l.LatestUtc:HH:mm:ss.fff}");
-        var sw = Stopwatch.StartNew();
-        foreach (CaptureLoop l in service.Loops) l.BeginRecording(250, 12);
-        TimeSpan took = service.Store.Take(service.Loops, includeCursor: true);
-        Snapshot? s = service.Store.Current;
-        Console.WriteLine(s == null ? "snapshot: none" : $"snapshot: {s.Images.Count} outputs in {took.TotalMilliseconds:F0} ms; " + string.Join("; ", s.Header.Outputs.Select(o => $"{o.DeviceName} {o.Width}x{o.Height} hdr={o.Hdr} cursor={(o.Cursor == null ? "none" : $"{o.Cursor.X},{o.Cursor.Y}")}")));
-        // pipe round trip against ourselves
-        var pipe = new PipeServer(service.Store, () => service.Loops, service.StatusText, service.Log);
-        pipe.Start();
-        Thread.Sleep(400);
-        Console.WriteLine("ring frames recorded: " + string.Join(", ", service.Loops.Select(l => $"{l.Output.DeviceName}={l.RingCount}")));
-        var client = new Hdr2Sdr.Windows.Helper.HelperClient(service.Log.Info);
-        sw.Restart();
-        var got = client.TryGetSnapshot(TimeSpan.FromSeconds(5));
-        Console.WriteLine(got == null ? "pipe get: nothing" : $"pipe get: {got.Images.Count} outputs, {got.Images.Sum(i => i.Data.Length) * 2 / 1024 / 1024} MB of halves in {sw.ElapsedMilliseconds} ms");
-        if (got != null)
+        int ok = 0;
+        foreach (CaptureLoop l in service.Loops)
         {
-            var o = got.Header.Outputs[0];
-            var crops = client.GetRingCrops(o.DeviceName, 100, 100, 320, 200);
-            Console.WriteLine($"ring crops for {o.DeviceName}: {crops.Count} -> offsets {string.Join(",", crops.Select(c => c.OffsetMs))} ms");
+            l.Freeze();
+            var sw = Stopwatch.StartNew();
+            var frame = l.Snapshot();
+            l.Unfreeze();
+            Console.WriteLine($"{l.Output.DeviceName}: status={l.Status} hasFrame={l.HasFrame} hdr={l.Output.Hdr} snapshot={(frame == null ? "none" : $"{frame.Width}x{frame.Height} in {sw.ElapsedMilliseconds} ms")}");
+            if (frame != null) ok++;
         }
-        client.Consume();
-        Console.WriteLine($"after consume: {(service.Store.Current == null ? "empty" : "still held")}, ring={service.Loops.Sum(l => l.RingCount)}");
-        pipe.Dispose();
-        return got != null && s != null ? 0 : 1;
+        Console.WriteLine($"hotkeys: {Core.ShareX.ShareXHotkeys.Parse(File.Exists(ShareXPaths.HotkeysConfig) ? File.ReadAllText(ShareXPaths.HotkeysConfig) : "{}").Count} ShareX capture hotkeys found");
+        return ok > 0 ? 0 : 1;
     }
 }

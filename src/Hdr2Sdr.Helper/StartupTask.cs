@@ -5,7 +5,7 @@ namespace Hdr2Sdr.Helper;
 /// <summary>Registers the helper as a Task Scheduler logon task for the current user (no admin rights).</summary>
 public static class StartupTask
 {
-    public const string TaskName = "hdr2sdr-helper";
+    public const string TaskName = "hdr2sdr";
 
     public static bool IsInstalled() => Run("/Query", "/TN", TaskName).ExitCode == 0;
 

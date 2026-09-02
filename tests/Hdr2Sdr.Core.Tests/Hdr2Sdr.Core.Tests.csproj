@@ -10,7 +10,4 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
     <ProjectReference Include="../../src/Hdr2Sdr.Core/Hdr2Sdr.Core.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>

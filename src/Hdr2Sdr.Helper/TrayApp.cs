@@ -34,7 +34,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add("Open log", null, (_, _) => Process.Start(new ProcessStartInfo(_service.Log.Path) { UseShellExecute = true }));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
-        _icon = new NotifyIcon { Icon = AppIcon.Get(), Text = "hdr2sdr helper", Visible = true, ContextMenuStrip = menu };
+        _icon = new NotifyIcon { Icon = AppIcon.Get(), Text = "hdr2sdr", Visible = true, ContextMenuStrip = menu };
         _icon.DoubleClick += (_, _) => ShowSettings();
         _timer = new System.Windows.Forms.Timer { Interval = 1000 };
         _timer.Tick += (_, _) => _status.Text = _service.StatusText();
@@ -43,7 +43,7 @@ public sealed class TrayApp : ApplicationContext
         _ = UiControl.Handle;   // force creation on this thread
     }
 
-    /// <summary>The menu and the taskbar's tray flyout are still on screen when an item is clicked; freeze only after they are gone.</summary>
+    /// <summary>The menu and the taskbar's tray flyout are still on screen when an item is clicked; capture only after they are gone.</summary>
     private void CaptureAfterMenuCloses(ContextMenuStrip menu, string job)
     {
         menu.Close();
@@ -76,7 +76,6 @@ public sealed class TrayApp : ApplicationContext
         base.ExitThreadCore();
     }
 
-    /// <summary>Invisible window that receives WM_DISPLAYCHANGE.</summary>
     private sealed class DisplayChangeWindow : NativeWindow, IDisposable
     {
         private readonly Action _onChange;

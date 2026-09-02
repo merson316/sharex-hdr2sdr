@@ -4,15 +4,15 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Hdr2Sdr.Core.Imaging;
-using Hdr2Sdr.Core.Snapshot;
+using Hdr2Sdr.Core.ShareX;
 using Hdr2Sdr.Core.Tonemap;
 
 namespace Hdr2Sdr.Helper;
 
 /// <summary>
-/// Overlay mode. On a ShareX capture hotkey: swallow the key, show the tonemapped frozen frame as a borderless
-/// topmost window over each HDR output, wait for the compositor, then start the same ShareX job through ShareX's
-/// command line. ShareX's GDI capture then sees correct SDR pixels and every ShareX feature works unchanged.
+/// On a ShareX capture hotkey: swallow the key, freeze the HDR frame, show it tonemapped in a borderless topmost
+/// window over each HDR output, wait for the compositor, then start the same ShareX job through ShareX's command
+/// line. ShareX's own capture then contains correct SDR pixels and every ShareX feature works unchanged.
 /// </summary>
 public sealed class OverlayController : IDisposable
 {
@@ -24,16 +24,17 @@ public sealed class OverlayController : IDisposable
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
     private const uint KeyEventKeyUp = 0x0002;
 
+    /// <summary>Jobs that capture the instant they start (no selector window): hide the overlay soon after.</summary>
+    private static readonly HashSet<string> InstantJobs = new(StringComparer.OrdinalIgnoreCase) { "PrintScreen", "ActiveWindow", "ActiveMonitor", "WindowRectangle", "LastRegion", "CustomRegion" };
+    private const int RegionJobTimeoutMs = 2500, InstantJobTimeoutMs = 400;
+
     private readonly HelperService _service;
     private readonly Control _ui;
     private readonly List<OverlayForm> _forms = new();
     private readonly System.Windows.Forms.Timer _hide;
     private readonly Stopwatch _sw = new();
-
-    /// <summary>Jobs that capture the instant they start (no selector window): hide the overlay soon after.</summary>
-    private static readonly HashSet<string> InstantJobs = new(StringComparer.OrdinalIgnoreCase) { "PrintScreen", "ActiveWindow", "ActiveMonitor", "WindowRectangle", "LastRegion", "CustomRegion" };
-    private const int RegionJobTimeoutMs = 2500, InstantJobTimeoutMs = 400;
     private readonly Action _onRegionWindow;
+    private DateTime _lastTrigger;
 
     public OverlayController(HelperService service, Control uiThreadControl)
     {
@@ -42,23 +43,28 @@ public sealed class OverlayController : IDisposable
         _hide = new System.Windows.Forms.Timer { Interval = RegionJobTimeoutMs };
         _hide.Tick += (_, _) => Hide("timeout");
         _service.Hotkeys.Swallow = true;
-        _service.Store.OverlayActive = true;
         _service.Hotkeys.Hotkey += OnHotkey;
         _onRegionWindow = () => { if (!_ui.IsDisposed) _ui.BeginInvoke(() => Hide("ShareX region window shown")); };
         _service.RegionWindow.RegionWindowShown += _onRegionWindow;
-        _service.Log.Info("overlay mode on: ShareX hotkeys are intercepted, the corrected frame is shown and the ShareX job started");
+        _service.Log.Info("overlay on: ShareX hotkeys are intercepted, the corrected frame is shown and the ShareX job started");
     }
 
     private void OnHotkey(HotkeyCombo combo)
     {
+        // Hook thread: freeze immediately, then do everything else on the UI thread.
+        DateTime now = DateTime.UtcNow;
+        if ((now - _lastTrigger).TotalMilliseconds < 700) return;
+        _lastTrigger = now;
+        foreach (CaptureLoop l in _service.Loops) l.Freeze();
         _sw.Restart();
-        // The service has already frozen the frame; do the rest on the UI thread.
         _ui.BeginInvoke(() => ShowAndTrigger(combo));
     }
 
-    /// <summary>Overlay-then-trigger for a job started from the helper itself (tray menu, command line). Frame must already be frozen.</summary>
+    /// <summary>Overlay-then-trigger for a job started from the tray menu or the command line.</summary>
     public void Capture(string job)
     {
+        _lastTrigger = DateTime.UtcNow;
+        foreach (CaptureLoop l in _service.Loops) l.Freeze();
         _sw.Restart();
         var combo = new HotkeyCombo(0, false, false, false, false, job);
         if (_ui.InvokeRequired) _ui.BeginInvoke(() => ShowAndTrigger(combo)); else ShowAndTrigger(combo);
@@ -68,20 +74,22 @@ public sealed class OverlayController : IDisposable
     {
         try
         {
-            Hide("new hotkey");
+            Hide("new capture");
             long t0 = _sw.ElapsedMilliseconds;
             Core.Config.Settings settings = _service.Settings;
             foreach (CaptureLoop loop in _service.Loops)
             {
                 if (!loop.Output.Hdr) continue;
-                var shot = loop.Snapshot(includeCursor: false, timeoutMs: 1000);
-                if (shot == null) { _service.Log.Warn($"overlay: no frame for {loop.Output.DeviceName}"); continue; }
+                FloatImage? frame = loop.Snapshot();
+                if (frame == null) { _service.Log.Warn($"overlay: no frame for {loop.Output.DeviceName}"); continue; }
+                _service.LastFrozen[loop.Output.DeviceName] = frame;
                 ITonemapper tm = TonemapperFactory.Create(settings.Tonemap, settings.ToTonemapParams(loop.Output.SdrWhiteNits, loop.Output.MaxLuminance));
-                byte[] rgba = PixelConvert.ToRgba8(shot.Value.Image, tm);
+                byte[] rgba = PixelConvert.ToRgba8(frame, tm);
                 var form = new OverlayForm(new Rectangle(loop.Output.Left, loop.Output.Top, loop.Output.Width, loop.Output.Height), ToBitmap(rgba, loop.Output.Width, loop.Output.Height));
                 form.Show();
                 _forms.Add(form);
             }
+            _service.LastCaptureUtc = DateTime.UtcNow;
             long t1 = _sw.ElapsedMilliseconds;
             Application.DoEvents();          // let the forms paint
             DwmFlush(); DwmFlush();          // two composed frames so GDI's copy of the desktop contains the overlay
@@ -90,7 +98,7 @@ public sealed class OverlayController : IDisposable
             _hide.Stop();
             _hide.Interval = InstantJobs.Contains(combo.Job) ? InstantJobTimeoutMs : RegionJobTimeoutMs;
             _hide.Start();
-            _service.Log.Info($"overlay: {_forms.Count} windows, tonemap+show {t1 - t0} ms, composed after {t2 - t0} ms, ShareX triggered via {how} at {_sw.ElapsedMilliseconds} ms");
+            _service.Log.Info($"{combo.Job}: {_forms.Count} overlay windows, tonemap+show {t1 - t0} ms, composed after {t2 - t0} ms, ShareX started via {how} at {_sw.ElapsedMilliseconds} ms");
         }
         catch (Exception e)
         {
@@ -98,36 +106,40 @@ public sealed class OverlayController : IDisposable
             Hide("error");
             TriggerShareX(combo);   // never leave the user's capture unstarted
         }
+        finally
+        {
+            foreach (CaptureLoop l in _service.Loops) l.Unfreeze();   // "latest" may follow the desktop again; the overlay holds its own copy
+        }
     }
 
-    /// <summary>
-    /// Starts the ShareX job the hotkey was bound to through ShareX's command line (handed to the running instance),
-    /// so there is no keystroke race. Falls back to re-injecting the key if ShareX's executable cannot be found.
-    /// </summary>
     private string TriggerShareX(HotkeyCombo combo)
     {
-        try
-        {
-            string? exe = Process.GetProcessesByName("ShareX").Select(p => { try { return p.MainModule?.FileName; } catch { return null; } }).FirstOrDefault(f => f != null);
-            exe ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ShareX", "ShareX.exe");
-            if (File.Exists(exe))
-            {
-                Process.Start(new ProcessStartInfo(exe, "-" + combo.Job) { UseShellExecute = false, CreateNoWindow = true });
-                return $"ShareX.exe -{combo.Job}";
-            }
-        }
-        catch (Exception e)
-        {
-            _service.Log.Warn("ShareX CLI trigger failed: " + e.Message);
-        }
+        if (StartShareXJob(combo.Job, _service.Log)) return $"ShareX.exe -{combo.Job}";
         if (combo.VirtualKey == 0) return "nothing (ShareX not found)";
         Reinject(combo);
         return "re-injected hotkey";
     }
 
+    /// <summary>Starts a ShareX job through its command line (handed to the running instance). False if ShareX cannot be found.</summary>
+    public static bool StartShareXJob(string job, HelperLog log)
+    {
+        try
+        {
+            string? exe = Process.GetProcessesByName("ShareX").Select(p => { try { return p.MainModule?.FileName; } catch { return null; } }).FirstOrDefault(f => f != null);
+            exe ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ShareX", "ShareX.exe");
+            if (!File.Exists(exe)) { log.Warn("ShareX.exe not found"); return false; }
+            Process.Start(new ProcessStartInfo(exe, "-" + job) { UseShellExecute = false, CreateNoWindow = true });
+            return true;
+        }
+        catch (Exception e)
+        {
+            log.Warn("could not start ShareX: " + e.Message);
+            return false;
+        }
+    }
+
     private static void Reinject(HotkeyCombo combo)
     {
-        // Modifiers are still physically held by the user; only the main key needs to be pressed again.
         var inputs = new[]
         {
             new Input { type = 1, ki = new KeyboardInput { wVk = (ushort)combo.VirtualKey } },
@@ -165,12 +177,11 @@ public sealed class OverlayController : IDisposable
     public void Dispose()
     {
         _service.Hotkeys.Swallow = false;
-        _service.Store.OverlayActive = false;
         _service.Hotkeys.Hotkey -= OnHotkey;
         _service.RegionWindow.RegionWindowShown -= _onRegionWindow;
-        Hide("overlay mode off");
+        Hide("overlay off");
         _hide.Dispose();
-        _service.Log.Info("overlay mode off");
+        _service.Log.Info("overlay off");
     }
 
     /// <summary>Borderless, topmost, non-activating window that paints one bitmap.</summary>
@@ -185,7 +196,6 @@ public sealed class OverlayController : IDisposable
             Bounds = bounds;
             TopMost = true;
             ShowInTaskbar = false;
-            DoubleBuffered = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }
         protected override bool ShowWithoutActivation => true;

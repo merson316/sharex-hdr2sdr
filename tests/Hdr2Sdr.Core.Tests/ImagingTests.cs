@@ -66,43 +66,7 @@ public class ImagingTests
         Assert.Equal(img.Data, img.RotateClockwise(4).Data);
     }
 
-    [Fact]
-    public void ToRgb16_scales_and_clamps_big_endian()
-    {
-        var img = new FloatImage(2, 1);
-        img.Data[0] = 0.5f; img.Data[1] = 2f; img.Data[2] = -1f;   // pixel 0
-        img.Data[3] = 1f; img.Data[4] = 0f; img.Data[5] = 0.25f;   // pixel 1
-        byte[] b = img.ToRgb16BigEndian(1f);
-        Assert.Equal(12, b.Length);
-        Assert.Equal(0x8000, (b[0] << 8) | b[1]);    // 0.5 * 65535 = 32767.5, MathF.Round rounds half to even -> 32768
-        Assert.Equal(0xFFFF, (b[2] << 8) | b[3]);    // clamped
-        Assert.Equal(0x0000, (b[4] << 8) | b[5]);    // clamped
-        Assert.Equal(0xFFFF, (b[6] << 8) | b[7]);
-    }
 
-    [Fact]
-    public void Downsample_box_averages()
-    {
-        var g = new GrayImage(4, 2);
-        g.Data = new float[] { 0, 1, 2, 3, 4, 5, 6, 7 };
-        var d = g.Downsample(2);
-        Assert.Equal(2, d.Width);
-        Assert.Equal(1, d.Height);
-        Assert.Equal(2.5f, d.Data[0]);   // (0+1+4+5)/4
-        Assert.Equal(4.5f, d.Data[1]);   // (2+3+6+7)/4
-        Assert.Same(g, g.Downsample(1));
-    }
-
-    [Fact]
-    public void Downsample_with_offset_shifts_the_box_grid()
-    {
-        var g = new GrayImage(4, 2);
-        g.Data = new float[] { 0, 1, 2, 3, 4, 5, 6, 7 };
-        var d = g.Downsample(2, 1, 0);
-        Assert.Equal(1, d.Width);
-        Assert.Equal(1, d.Height);
-        Assert.Equal(3.5f, d.Data[0]);   // (1+2+5+6)/4
-    }
 
     [Fact]
     public void ToRgba8_encodes_srgb_and_sets_alpha()
@@ -118,34 +82,4 @@ public class ImagingTests
         Assert.Equal(new byte[] { 0, 0, 0, 255 }, rgba[8..12]);
     }
 
-    [Fact]
-    public void ToGray_uses_709_weights_on_encoded_values()
-    {
-        byte[] rgba = { 255, 255, 255, 255, 255, 0, 0, 255 };
-        var g = PixelConvert.ToGray(rgba, 2, 1);
-        Assert.Equal(1.0, g.Data[0], 0.001);
-        Assert.Equal(0.2126, g.Data[1], 0.001);
-    }
-
-    [Fact]
-    public void Dib_has_header_bgr_and_bottom_up_rows()
-    {
-        byte[] rgba =
-        {
-            10, 20, 30, 255,   40, 50, 60, 255,   // row 0 (top)
-            70, 80, 90, 255,  100, 110, 120, 255,  // row 1 (bottom)
-        };
-        byte[] dib = DibEncoder.Encode(rgba, 2, 2);
-        Assert.Equal(40 + 16, dib.Length);
-        Assert.Equal(40, BitConverter.ToInt32(dib, 0));      // biSize
-        Assert.Equal(2, BitConverter.ToInt32(dib, 4));       // biWidth
-        Assert.Equal(2, BitConverter.ToInt32(dib, 8));       // biHeight (positive = bottom-up)
-        Assert.Equal(1, BitConverter.ToInt16(dib, 12));      // biPlanes
-        Assert.Equal(32, BitConverter.ToInt16(dib, 14));     // biBitCount
-        Assert.Equal(0, BitConverter.ToInt32(dib, 16));      // BI_RGB
-        Assert.Equal(16, BitConverter.ToInt32(dib, 20));     // biSizeImage
-        // first stored row is the bottom source row, in BGRA
-        Assert.Equal(new byte[] { 90, 80, 70, 255 }, dib[40..44]);
-        Assert.Equal(new byte[] { 30, 20, 10, 255 }, dib[48..52]);
-    }
 }

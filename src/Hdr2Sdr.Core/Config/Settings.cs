@@ -1,42 +1,19 @@
-using Hdr2Sdr.Core.Cli;
 using Hdr2Sdr.Core.Tonemap;
 
 namespace Hdr2Sdr.Core.Config;
 
-/// <summary>Persistent user settings. Defaults reproduce v0.1 behaviour. Command-line flags override per field.</summary>
+/// <summary>Persistent user settings for the overlay.</summary>
 public sealed record Settings
 {
     public string Tonemap { get; init; } = "desktop";
     public float Exposure { get; init; } = 1f;
     public float Knee { get; init; } = 1f;
+    /// <summary>null = the SDR white level Windows reports for the monitor.</summary>
     public float? SdrWhiteNits { get; init; }
+    /// <summary>null = the peak luminance the monitor reports.</summary>
     public float? PeakNits { get; init; }
-    public float JpegQuality { get; init; } = 0.9f;
-    /// <summary>0-100 lossy quality; 101 means lossless.</summary>
-    public int WebpQuality { get; init; } = 90;
-    /// <summary>auto (follow ShareX's "show cursor"), on, off.</summary>
-    public string Cursor { get; init; } = "auto";
-    /// <summary>none or jxr.</summary>
-    public string HdrSidecar { get; init; } = "none";
-    public bool UseHelper { get; init; } = true;
-    /// <summary>How long after the hotkey the helper keeps recording frames for alignment with ShareX's capture.</summary>
-    public int HelperRingMs { get; init; } = 250;
-    /// <summary>Maximum frames recorded in that window (GPU memory: one full frame each).</summary>
-    public int HelperRingFrames { get; init; } = 12;
-    /// <summary>Copy pixels ShareX's editor added (arrows, text, blur) over the tonemapped result.</summary>
-    public bool CarryAnnotations { get; init; } = true;
-    /// <summary>
-    /// Milliseconds of frame history the helper keeps on the GPU at all times (0 = off). With history on, captures
-    /// started without a hotkey (tray menu, command line) are aligned too, and the keyboard hook becomes optional.
-    /// Costs one full frame of VRAM per ~16 ms.
-    /// </summary>
-    public int HelperHistoryMs { get; init; } = 0;
-    /// <summary>Watch ShareX's own hotkeys with a low-level keyboard hook (off = rely on the region-window watcher and history).</summary>
-    public bool HelperKeyboardHook { get; init; } = true;
-
-    public const int WebpLossless = 101;
-    public static readonly string[] CursorModes = { "auto", "on", "off" };
-    public static readonly string[] SidecarModes = { "none", "jxr" };
+    /// <summary>Intercept ShareX's capture hotkeys (the overlay needs this). Off = ShareX captures on its own.</summary>
+    public bool InterceptHotkeys { get; init; } = true;
 
     /// <summary>Clamps every field into its valid range; returns what was changed (empty when nothing).</summary>
     public Settings Sanitized(out List<string> fixes)
@@ -49,33 +26,8 @@ public sealed record Settings
         if (!(s.Knee > 0f && s.Knee <= 1f)) { fixes.Add($"knee {s.Knee} -> clamped"); s = s with { Knee = Math.Clamp(float.IsNaN(s.Knee) ? 1f : s.Knee, 0.01f, 1f) }; }
         if (s.SdrWhiteNits is <= 0f) { fixes.Add("sdrWhiteNits <= 0 -> auto"); s = s with { SdrWhiteNits = null }; }
         if (s.PeakNits is <= 0f) { fixes.Add("peakNits <= 0 -> auto"); s = s with { PeakNits = null }; }
-        if (!(s.JpegQuality >= 0.1f && s.JpegQuality <= 1f)) { fixes.Add($"jpegQuality {s.JpegQuality} -> clamped"); s = s with { JpegQuality = Math.Clamp(float.IsNaN(s.JpegQuality) ? 0.9f : s.JpegQuality, 0.1f, 1f) }; }
-        if (s.WebpQuality < 0 || s.WebpQuality > WebpLossless) { fixes.Add($"webpQuality {s.WebpQuality} -> clamped"); s = s with { WebpQuality = Math.Clamp(s.WebpQuality, 0, WebpLossless) }; }
-        if (!CursorModes.Contains(s.Cursor.ToLowerInvariant())) { fixes.Add($"cursor '{s.Cursor}' -> auto"); s = s with { Cursor = "auto" }; }
-        else s = s with { Cursor = s.Cursor.ToLowerInvariant() };
-        if (!SidecarModes.Contains(s.HdrSidecar.ToLowerInvariant())) { fixes.Add($"hdrSidecar '{s.HdrSidecar}' -> none"); s = s with { HdrSidecar = "none" }; }
-        else s = s with { HdrSidecar = s.HdrSidecar.ToLowerInvariant() };
-        if (s.HelperRingMs < 0 || s.HelperRingMs > 2000) { fixes.Add($"helperRingMs {s.HelperRingMs} -> clamped"); s = s with { HelperRingMs = Math.Clamp(s.HelperRingMs, 0, 2000) }; }
-        if (s.HelperRingFrames < 1 || s.HelperRingFrames > 60) { fixes.Add($"helperRingFrames {s.HelperRingFrames} -> clamped"); s = s with { HelperRingFrames = Math.Clamp(s.HelperRingFrames, 1, 60) }; }
-        if (s.HelperHistoryMs < 0 || s.HelperHistoryMs > 1000) { fixes.Add($"helperHistoryMs {s.HelperHistoryMs} -> clamped"); s = s with { HelperHistoryMs = Math.Clamp(s.HelperHistoryMs, 0, 1000) }; }
         return s;
     }
-
-    /// <summary>Command-line values win wherever the flag was given.</summary>
-    public Settings ApplyCli(CliOptions o) => this with
-    {
-        Tonemap = o.Tonemap ?? Tonemap,
-        Exposure = o.Exposure ?? Exposure,
-        Knee = o.Knee ?? Knee,
-        SdrWhiteNits = o.SdrWhiteNits ?? SdrWhiteNits,
-        PeakNits = o.PeakNits ?? PeakNits,
-        JpegQuality = o.JpegQuality ?? JpegQuality,
-        WebpQuality = o.WebpQuality ?? WebpQuality,
-        Cursor = o.Cursor ?? Cursor,
-        HdrSidecar = o.HdrSidecar ?? HdrSidecar,
-        UseHelper = o.NoHelper ? false : UseHelper,
-        CarryAnnotations = o.NoAnnotations ? false : CarryAnnotations,
-    };
 
     public TonemapParams ToTonemapParams(float monitorSdrWhiteNits, float monitorPeakNits) => new()
     {
@@ -84,7 +36,4 @@ public sealed record Settings
         Exposure = Exposure,
         Knee = Knee,
     };
-
-    /// <summary>True when the effective tonemap differs from the preview (exact-SDR clip with monitor values).</summary>
-    public bool IsCustomTonemap => !(Tonemap == "desktop" && Knee >= 1f && Exposure == 1f && SdrWhiteNits == null && PeakNits == null);
 }
