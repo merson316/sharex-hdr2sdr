@@ -7,7 +7,8 @@ if ! command -v dotnet >/dev/null 2>&1 && [ -x "$HOME/.dotnet/dotnet" ]; then ex
 cd "$(dirname "$0")/.."
 dotnet test tests/Hdr2Sdr.Core.Tests -c Release
 dotnet publish src/Hdr2Sdr.App -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/
-echo "built: dist/hdr2sdr.exe ($(stat -c %s dist/hdr2sdr.exe) bytes)"
+dotnet publish src/Hdr2Sdr.Helper -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/
+echo "built: dist/hdr2sdr.exe ($(stat -c %s dist/hdr2sdr.exe) bytes), dist/hdr2sdr-helper.exe ($(stat -c %s dist/hdr2sdr-helper.exe) bytes)"
 
 if [ -z "${INSTALL_DIR:-}" ]; then
   if [ -x /mnt/c/Windows/System32/cmd.exe ]; then
@@ -19,8 +20,14 @@ if [ -z "${INSTALL_DIR:-}" ]; then
 fi
 if [ -n "${INSTALL_DIR:-}" ]; then
   mkdir -p "$INSTALL_DIR"
+  # a running helper locks its exe; stop it, copy, and the logon task or the user restarts it
+  if [ -x /mnt/c/Windows/System32/taskkill.exe ]; then (cd /mnt/c && /mnt/c/Windows/System32/taskkill.exe /IM hdr2sdr-helper.exe /F >/dev/null 2>&1 || true); sleep 1; fi
   cp dist/hdr2sdr.exe "$INSTALL_DIR/hdr2sdr.exe"
-  echo "installed: $INSTALL_DIR/hdr2sdr.exe"
+  cp dist/hdr2sdr-helper.exe "$INSTALL_DIR/hdr2sdr-helper.exe"
+  echo "installed: $INSTALL_DIR/hdr2sdr.exe and hdr2sdr-helper.exe"
+  if [ -x /mnt/c/Windows/System32/schtasks.exe ] && (cd /mnt/c && /mnt/c/Windows/System32/schtasks.exe /Query /TN hdr2sdr-helper >/dev/null 2>&1); then
+    (cd /mnt/c && /mnt/c/Windows/System32/schtasks.exe /Run /TN hdr2sdr-helper >/dev/null 2>&1) && echo "helper restarted"
+  fi
 else
   echo "no Windows profile found; copy dist/hdr2sdr.exe wherever you like and point the ShareX action at it"
 fi

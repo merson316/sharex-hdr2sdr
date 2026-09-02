@@ -17,6 +17,10 @@ every ShareX capture and fixes the image:
 Region, window, monitor and multi-monitor fullscreen captures are all handled. If anything goes
 wrong the tool exits without touching ShareX's file or the clipboard.
 
+An optional resident helper (`hdr2sdr-helper.exe`, tray icon) makes the result exact even for
+moving content: it freezes the HDR frame the instant you press a ShareX hotkey, includes the mouse
+cursor, and offers a settings dialog with a live preview of your last capture.
+
 ## Requirements
 
 - Windows 10/11 with at least one display in HDR mode (SDR-only setups just get a no-op).
@@ -25,8 +29,9 @@ wrong the tool exits without touching ShareX's file or the clipboard.
 
 ## Install
 
-1. Download `hdr2sdr.exe` from the [latest release](../../releases/latest) and put it somewhere
-   permanent, for example `C:\Users\<you>\Tools\hdr2sdr\hdr2sdr.exe`.
+1. Download `hdr2sdr.exe` (and, if you want it, `hdr2sdr-helper.exe`) from the
+   [latest release](../../releases/latest) and put them somewhere permanent, for example
+   `C:\Users\<you>\Tools\hdr2sdr\`.
 2. Register it as a ShareX action. Either run the helper with ShareX closed
    (`python3 tools/install_sharex_action.py`, works from WSL or Windows Python; it backs up the
    config first), or do it in the ShareX UI:
@@ -41,6 +46,42 @@ wrong the tool exits without touching ShareX's file or the clipboard.
 
 That's it. Every capture is now processed automatically; the clipboard ends up holding the
 tonemapped image because the action runs after ShareX's own clipboard copy.
+
+3. Optional helper: run `hdr2sdr-helper.exe` once (or `python3 tools/install_sharex_action.py --helper`
+   to register it as a logon task and start it). A tray icon appears; double-click it for settings.
+
+## Settings
+
+Defaults reproduce the plain behaviour. Everything can be changed in
+`%LOCALAPPDATA%\hdr2sdr\settings.json`, most easily through the helper's settings dialog, which
+re-tonemaps your last capture live as you move the sliders:
+
+```json
+{
+  "tonemap": "desktop", "exposure": 1.0, "knee": 1.0,
+  "sdrWhiteNits": null, "peakNits": null,
+  "jpegQuality": 0.9, "webpQuality": 90,
+  "cursor": "auto", "hdrSidecar": "none", "useHelper": true
+}
+```
+
+Command-line flags override the file; the file overrides the defaults. `cursor: auto` follows
+ShareX's own "show cursor" option (cursor capture needs the helper). `hdrSidecar: jxr` also saves the
+raw HDR region as a `.jxr` next to the SDR file, the same scRGB JPEG XR format Game Bar writes, which
+Windows Photos shows in HDR. `webpQuality: 101` means lossless.
+
+## The helper
+
+Without the helper, the action re-captures the screen when it runs, which is after you finished
+drawing the region, so a video or game shows a later frame. The helper keeps a Desktop Duplication
+session open and, when you press one of ShareX's capture hotkeys, freezes the frame at that instant
+and hands it to the action over a named pipe. The action falls back to a live capture whenever the
+helper is not running or its snapshot does not belong to this capture.
+
+Privacy: the helper installs a low-level keyboard hook to notice ShareX's hotkeys. It only compares
+each key-down against the combinations read from ShareX's own `HotkeysConfig.json`; keys are never
+stored or logged. Frames live in memory only, the newest one for at most two minutes. Pause it from the
+tray menu whenever you like.
 
 ## Command line
 
@@ -87,23 +128,25 @@ dotnet test tests/Hdr2Sdr.Core.Tests
 dotnet publish src/Hdr2Sdr.App -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o dist/
 ```
 
-`tools/publish.sh` does both and, on WSL, copies the exe to `C:\Users\<you>\Tools\hdr2sdr`.
+`tools/publish.sh` builds both executables and, on WSL, copies them to `C:\Users\<you>\Tools\hdr2sdr`.
 
-Layout: `src/Hdr2Sdr.Core` (colour maths, tonemappers, PNG codec, region matcher, CLI parsing),
-`src/Hdr2Sdr.App` (Desktop Duplication via [Vortice](https://github.com/amerkoleci/Vortice.Windows),
-DisplayConfig, WIC image I/O, Win32 clipboard), `tests/Hdr2Sdr.Core.Tests` (xunit).
+Layout: `src/Hdr2Sdr.Core` (colour maths, tonemappers, PNG codec, region matcher, CLI parsing,
+settings, cursor compositing, snapshot protocol), `src/Hdr2Sdr.Windows` (Desktop Duplication via
+[Vortice](https://github.com/amerkoleci/Vortice.Windows), DisplayConfig, WIC and libwebp image I/O,
+JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/Hdr2Sdr.Helper`
+(tray helper), `tests/Hdr2Sdr.Core.Tests` (xunit).
 
 ## Limitations
 
-- ShareX freezes the screen when you press the hotkey and lets you draw the region on that frozen
-  image; the re-capture happens after you finish, so anything that moved in between (video frames,
-  animations) shows its later state. The region is still located correctly as long as part of it
-  stayed put: the matcher splits the region into tiles and takes the position most tiles agree on.
-  If everything changed, the match fails and ShareX's image is kept.
-- The mouse cursor is not included. DRM-protected content captures black.
+- Without the helper, anything that moved between the hotkey and the end of your region selection
+  (video frames, animations) shows its later state, and the cursor is not included. The region is
+  still located correctly as long as part of it stayed put; if everything changed, the match fails
+  and ShareX's image is kept. With the helper both problems go away.
+- DRM-protected content captures black.
 - Games in exclusive fullscreen cannot be captured by Desktop Duplication; use borderless windowed
   mode. (Windows' own Auto HDR/HDR games in borderless mode work.)
-- Windows ships no WebP encoder, so a WebP file is left unchanged (the clipboard is still updated).
+- Captures started without a ShareX hotkey (tray menu, command line) get a live re-capture even with
+  the helper running, because there was no key press to freeze on.
 
 ## License
 

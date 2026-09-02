@@ -2,7 +2,10 @@
 
 Run from WSL (or Windows Python) with ShareX closed, because ShareX rewrites its config on exit:
 
-    python3 tools/install_sharex_action.py [config_path] [exe_windows_path]
+    python3 tools/install_sharex_action.py [--helper | --no-helper] [config_path] [exe_windows_path]
+
+--helper registers hdr2sdr-helper.exe (next to hdr2sdr.exe) as a logon task and starts it;
+--no-helper stops it and removes the task. Without either flag the helper is left alone.
 
 Defaults: the ShareX config in the current Windows user's Documents folder, and
 C:\\Users\\<user>\\Tools\\hdr2sdr\\hdr2sdr.exe (where tools/publish.sh installs the exe).
@@ -66,3 +69,19 @@ with open(config, "w", encoding="utf-8") as f:
 print(f"updated {config} (backup: {backup})")
 print(f"action path: {exe}")
 print(f"AfterCaptureJob = {task['AfterCaptureJob']}")
+
+
+def schtasks(*a):
+    return subprocess.run([f"{SYS32}/schtasks.exe", *a], capture_output=True, text=True, cwd="/mnt/c" if ON_WSL else None)
+
+
+helper_exe = exe.rsplit("\\", 1)[0] + "\\hdr2sdr-helper.exe"
+if want_helper:
+    r = schtasks("/Create", "/F", "/SC", "ONLOGON", "/RL", "LIMITED", "/TN", "hdr2sdr-helper", "/TR", f'"{helper_exe}"')
+    print("helper logon task:", "created" if r.returncode == 0 else "FAILED " + (r.stdout + r.stderr).strip())
+    r = schtasks("/Run", "/TN", "hdr2sdr-helper")
+    print("helper started:", r.returncode == 0)
+elif drop_helper:
+    subprocess.run([f"{SYS32}/taskkill.exe", "/IM", "hdr2sdr-helper.exe", "/F"], capture_output=True, cwd="/mnt/c" if ON_WSL else None)
+    r = schtasks("/Delete", "/F", "/TN", "hdr2sdr-helper")
+    print("helper logon task:", "removed" if r.returncode == 0 else "not present")
