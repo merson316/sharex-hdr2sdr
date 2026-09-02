@@ -91,8 +91,7 @@ dotnet publish src/Hdr2Sdr.App -c Release -r win-x64 --self-contained false -p:P
 
 Layout: `src/Hdr2Sdr.Core` (colour maths, tonemappers, PNG codec, region matcher, CLI parsing),
 `src/Hdr2Sdr.App` (Desktop Duplication via [Vortice](https://github.com/amerkoleci/Vortice.Windows),
-DisplayConfig, WIC image I/O, Win32 clipboard), `tests/Hdr2Sdr.Core.Tests` (xunit). Design notes and
-the implementation plan live in `docs/superpowers/`.
+DisplayConfig, WIC image I/O, Win32 clipboard), `tests/Hdr2Sdr.Core.Tests` (xunit).
 
 ## Limitations
 
