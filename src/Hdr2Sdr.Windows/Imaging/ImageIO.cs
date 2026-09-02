@@ -7,7 +7,7 @@ namespace Hdr2Sdr.Windows.Imaging;
 
 /// <summary>
 /// Reads any image the Windows Imaging Component can decode (PNG, JPEG, BMP, GIF, TIFF, WebP, HEIF, ...)
-/// and writes back in the same container. PNG goes through the cross-platform codec in Core.
+/// and writes back in the same container. PNG goes through the cross-platform codec in Core, WebP through libwebp.
 /// </summary>
 public static class ImageIO
 {
@@ -49,9 +49,10 @@ public static class ImageIO
     }
 
     /// <summary>Encodes to the container implied by the file extension. Throws if Windows has no encoder for it.</summary>
-    public static byte[] Encode(ReadOnlySpan<byte> rgba, int width, int height, string extension, float jpegQuality = 0.9f)
+    public static byte[] Encode(ReadOnlySpan<byte> rgba, int width, int height, string extension, float jpegQuality = 0.9f, int webpQuality = 90)
     {
         if (IsPng(extension)) return Png.EncodeRgba8(rgba, width, height);
+        if (extension.Equals(".webp", StringComparison.OrdinalIgnoreCase)) return WebPEncoder.Encode(rgba, width, height, webpQuality);
         ContainerFormat container = Container(extension) ?? throw new NotSupportedException($"No encoder for '{extension}'.");
 
         EnsureCom();
