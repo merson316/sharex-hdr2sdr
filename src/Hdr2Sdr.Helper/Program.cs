@@ -18,6 +18,7 @@ internal static class Program
         service.Start();
         using var tray = new TrayApp(service);
         service.Hotkeys.Install();   // hook runs on its own thread
+        using OverlaySpike? spike = args.Contains("--overlay") ? new OverlaySpike(service, tray.UiControl) : null;
         Application.Run(tray);
         return 0;
     }

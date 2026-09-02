@@ -45,6 +45,9 @@ public sealed class HotkeyWatcher : IDisposable
 
     /// <summary>Raised on the hook thread; handlers must return immediately.</summary>
     public event Action<HotkeyCombo>? Hotkey;
+    /// <summary>When true, matching key-downs are swallowed (ShareX does not see them) so they can be re-injected later.</summary>
+    public volatile bool Swallow;
+    private const uint LlkhfInjected = 0x10;
     public bool Installed => _installed;
     public int ComboCount => _combos.Count;
     public bool Paused { get; set; }
@@ -136,8 +139,10 @@ public sealed class HotkeyWatcher : IDisposable
         if (nCode >= 0 && !Paused && ((int)wParam == WmKeydown || (int)wParam == WmSyskeydown))
         {
             int vk = Marshal.ReadInt32(lParam);   // KBDLLHOOKSTRUCT.vkCode
+            uint flags = (uint)Marshal.ReadInt32(lParam, 8);
+            bool injected = (flags & LlkhfInjected) != 0;   // our own re-injection: let it through untouched
             List<HotkeyCombo> combos = _combos;
-            if (combos.Count > 0 && combos.Any(c => c.VirtualKey == vk))
+            if (!injected && combos.Count > 0 && combos.Any(c => c.VirtualKey == vk))
             {
                 bool ctrl = Down(VkControl), shift = Down(VkShift), alt = Down(VkMenu), win = Down(VkLwin) || Down(VkRwin);
                 foreach (HotkeyCombo c in combos)
@@ -149,6 +154,7 @@ public sealed class HotkeyWatcher : IDisposable
                         _lastFire = now;
                         Hotkey?.Invoke(c);
                     }
+                    if (Swallow) return (IntPtr)1;
                     break;
                 }
             }

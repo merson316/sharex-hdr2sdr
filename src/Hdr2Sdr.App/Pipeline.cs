@@ -257,10 +257,13 @@ internal static class Pipeline
             byte[] reference = customTonemap ? PixelConvert.ToRgba8(hdrRegion, PreviewTonemapper(container.Output)) : result;
             float scale = container.Output.Hdr ? container.Output.SdrWhiteNits / 80f : 1f;
             AnnotationResult ann = AnnotationRecovery.Apply(rgbaIn, reference, result, hdrRegion, scale, tw, th);
-            if (ann.Pixels > 0)
+            log.Info($"annotations: gdi-vs-render mean diff {ann.MeanDiff:F1} levels; hard {ann.HardPixels} px, soft (blur/pixelate) {ann.SoftPixels} px, applied {ann.Pixels} px");
+            if (ann.Pixels > 0) result = ann.Rgba;
+            if (opts.DumpDir != null)
             {
-                log.Info($"annotations: {ann.Pixels} px from ShareX's image carried over");
-                result = ann.Rgba;
+                File.WriteAllBytes(Path.Combine(opts.DumpDir, "annot-sharex.png"), Png.EncodeRgba8(rgbaIn, tw, th));
+                File.WriteAllBytes(Path.Combine(opts.DumpDir, "annot-render.png"), Png.EncodeRgba8(reference, tw, th));
+                File.WriteAllBytes(Path.Combine(opts.DumpDir, "annot-result.png"), Png.EncodeRgba8(result, tw, th));
             }
         }
 

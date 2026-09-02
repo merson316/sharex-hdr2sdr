@@ -163,9 +163,10 @@ JPEG XR, Win32 clipboard, helper client), `src/Hdr2Sdr.App` (the action), `src/H
   `helperHistoryMs` is on; they cannot be frozen at the right instant otherwise. Non-region captures
   started that way (active window, monitor) are not detectable at all and always re-capture live.
 - Edits made in ShareX's image editor before saving (arrows, text, blur, pixelate, highlights) are
-  carried over onto the tonemapped result by comparing ShareX's image with ours; the one case that is
-  missed is an annotation drawn directly on top of HDR-bright pixels, and a resize in the editor still
-  defeats the match so ShareX's image is kept. `--no-annotations` turns the carry-over off.
+  carried over onto the tonemapped result by comparing ShareX's image with ours, but only over SDR
+  content: on and right around HDR surfaces (video, games) Windows renders GDI's copy through its own
+  tone curve, so differences there cannot be told from edits and are left alone. A resize in the
+  editor defeats the match and keeps ShareX's image. `--no-annotations` turns the carry-over off.
 
 ## License
 

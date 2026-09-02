@@ -1,6 +1,7 @@
 namespace Hdr2Sdr.Core.Imaging;
 
-public sealed record AnnotationResult(byte[] Rgba, int Pixels);
+/// <summary>MeanDiff: mean per-pixel difference between ShareX's SDR pixels and our tone-fitted render (0 = identical frame).</summary>
+public sealed record AnnotationResult(byte[] Rgba, int Pixels, int HardPixels = 0, int SoftPixels = 0, float MeanDiff = 0f);
 
 /// <summary>
 /// Recovers what ShareX's image editor added on top of its own capture (arrows, text, blur, pixelate ...).
@@ -36,7 +37,15 @@ public static class AnnotationRecovery
             sdr[i] = r >= SdrMin && r <= SdrMax && g >= SdrMin && g <= SdrMax && b >= SdrMin && b <= SdrMax;
             if (sdr[i]) sdrCount++;
         }
-        if (sdrCount == 0) return new AnnotationResult((byte[])target.Clone(), 0);
+        if (sdrCount == 0) return new AnnotationResult((byte[])target.Clone(), 0, 0, 0, 0f);
+
+        // GDI renders HDR surfaces (video, games) through its own tone curve that is not a function of our pixels,
+        // so differences inside and right around HDR content mean nothing. Trust only blocks with no HDR pixel in
+        // themselves or their neighbours; edits over HDR content are not carried over.
+        bool[] trusted = TrustedBlocks(sdr, width, height);
+        for (int i = 0; i < n; i++) if (!trusted[i]) sdr[i] = false;
+        sdrCount = sdr.Count(v => v);
+        if (sdrCount == 0) return new AnnotationResult((byte[])target.Clone(), 0, 0, 0, 0f);
 
         // GDI's rendering of the SDR desktop need not equal ours level for level (different transfer curve, dithering),
         // but the relationship is a global monotonic one. Fit it per channel as the median ShareX value for each of
@@ -45,14 +54,17 @@ public static class AnnotationRecovery
 
         var raw = new bool[n];
         var diff = new int[n];
+        double diffSum = 0;
         for (int i = 0; i < n; i++)
         {
             if (!sdr[i]) continue;
             int p = i * 4;
             int d = Math.Max(Math.Abs(sharex[p] - lut[0][reference[p]]), Math.Max(Math.Abs(sharex[p + 1] - lut[1][reference[p + 1]]), Math.Abs(sharex[p + 2] - lut[2][reference[p + 2]])));
             diff[i] = d;
+            diffSum += d;
             raw[i] = d > Threshold;
         }
+        float meanDiff = (float)(diffSum / sdrCount);
 
         // Opening-like cleanup: keep a pixel only if most of its 3x3 neighbourhood also differs (kills speckles,
         // keeps 2 px lines), then grow by one pixel onto SDR pixels to cover anti-aliased edges.
@@ -77,12 +89,14 @@ public static class AnnotationRecovery
                 }
             }
 
-        if (count > sdrCount * MaxMaskShare) return new AnnotationResult((byte[])target.Clone(), 0);   // not the same frame
+        int hardCount = count;
+        if (count > sdrCount * MaxMaskShare) return new AnnotationResult((byte[])target.Clone(), 0, hardCount, 0, meanDiff);   // not the same frame
 
         // Soft edits (blur, pixelate) barely move flat pixels and are skipped over HDR highlights by the rules above,
         // so detect them by their signature instead: a block whose fine detail collapsed while its mean stayed put.
         bool[] soft = SoftEditBlocks(sharex, reference, lut, width, height);
-        for (int i = 0; i < n; i++) if (soft[i]) { if (!mask[i]) count++; mask[i] = true; }
+        int softCount = 0;
+        for (int i = 0; i < n; i++) if (soft[i]) { softCount++; if (!mask[i]) count++; mask[i] = true; }
 
         // Blend by how strongly each pixel differs: solid annotation pixels are copied outright, anti-aliased edges and
         // the grown border mix into our render instead of dragging ShareX's background (and its compression noise) along.
@@ -97,7 +111,32 @@ public static class AnnotationRecovery
             int p = i * 4;
             for (int c = 0; c < 3; c++) result[p + c] = (byte)Math.Round(result[p + c] * (1f - a) + sharex[p + c] * a);
         }
-        return new AnnotationResult(result, applied);
+        return new AnnotationResult(result, applied, hardCount, softCount, meanDiff);
+    }
+
+    /// <summary>Per-pixel: the pixel's 8x8 block and all 8 neighbouring blocks contain only SDR pixels.</summary>
+    private static bool[] TrustedBlocks(bool[] sdr, int width, int height)
+    {
+        int bw = (width + Block - 1) / Block, bh = (height + Block - 1) / Block;
+        var hdrBlock = new bool[bw * bh];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                if (!sdr[y * width + x]) hdrBlock[(y / Block) * bw + x / Block] = true;
+        var trustedBlock = new bool[bw * bh];
+        for (int by = 0; by < bh; by++)
+            for (int bx = 0; bx < bw; bx++)
+            {
+                bool ok = true;
+                for (int j = Math.Max(0, by - 1); ok && j <= Math.Min(bh - 1, by + 1); j++)
+                    for (int i = Math.Max(0, bx - 1); i <= Math.Min(bw - 1, bx + 1); i++)
+                        if (hdrBlock[j * bw + i]) { ok = false; break; }
+                trustedBlock[by * bw + bx] = ok;
+            }
+        var result = new bool[width * height];
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                result[y * width + x] = trustedBlock[(y / Block) * bw + x / Block];
+        return result;
     }
 
     private const int Block = 8;

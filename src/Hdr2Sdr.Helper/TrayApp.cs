@@ -14,6 +14,8 @@ public sealed class TrayApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _timer;
     private readonly DisplayChangeWindow _window;
     private SettingsForm? _settings;
+    /// <summary>A control created on the UI thread, for BeginInvoke from other threads.</summary>
+    public Control UiControl { get; } = new Control();
 
     public TrayApp(HelperService service)
     {
@@ -34,6 +36,7 @@ public sealed class TrayApp : ApplicationContext
         _timer.Tick += (_, _) => _status.Text = _service.StatusText();
         _timer.Start();
         _window = new DisplayChangeWindow(() => _service.OnDisplayChange());
+        _ = UiControl.Handle;   // force creation on this thread
     }
 
     private void ShowSettings()
