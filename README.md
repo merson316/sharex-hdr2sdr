@@ -129,8 +129,9 @@ dotnet publish src/Hdr2Sdr.App -c Release -r win-x64 --self-contained false -p:P
 ```
 
 `tools/publish.sh` builds both executables and, on WSL, copies them to `C:\Users\<you>\Tools\hdr2sdr`.
-Without a local SDK, `tools/build-with-docker.sh` runs the same script inside the official .NET SDK
-image and leaves the executables in `dist/`.
+Without a local SDK, `tools/build-with-docker.sh` runs the same script inside the project's builder
+image (`ghcr.io/merson316/sharex-hdr2sdr/builder`, published by CI from `tools/builder.Dockerfile`;
+set `BUILDER_LOCAL=1` to build the image yourself) and leaves the executables in `dist/`.
 
 Layout: `src/Hdr2Sdr.Core` (colour maths, tonemappers, PNG codec, region matcher, CLI parsing,
 settings, cursor compositing, snapshot protocol), `src/Hdr2Sdr.Windows` (Desktop Duplication via

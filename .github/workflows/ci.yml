@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -33,3 +34,27 @@ jobs:
           files: |
             dist/hdr2sdr.exe
             dist/hdr2sdr-helper.exe
+
+  builder-image:
+    # Publishes the reproducible build environment (tools/builder.Dockerfile) to GHCR on every push to main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: tools
+          file: tools/builder.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/builder:latest
+            ghcr.io/${{ github.repository }}/builder:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Build environment for hdr2sdr (.NET 9 SDK on Alpine)
+            org.opencontainers.image.licenses=MIT
