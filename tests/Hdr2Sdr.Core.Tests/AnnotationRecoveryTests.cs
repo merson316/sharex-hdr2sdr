@@ -96,3 +96,69 @@ public class AnnotationRecoveryTests
         Assert.Equal((0, 255, 0), (res.Rgba[onLine], res.Rgba[onLine + 1], res.Rgba[onLine + 2]));
     }
 }
+
+public class AnnotationRecoveryToneTests
+{
+    private const int W = 120, H = 80;
+
+    private static (byte[] Render, FloatImage Region) Scene()
+    {
+        var render = new byte[W * H * 4];
+        var region = new FloatImage(W, H);
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                int i = (y * W + x) * 4;
+                render[i] = (byte)(x * 2); render[i + 1] = (byte)(y * 3); render[i + 2] = (byte)((x + y) & 255); render[i + 3] = 255;
+                int f = (y * W + x) * 3;
+                region.Data[f] = region.Data[f + 1] = region.Data[f + 2] = 0.4f;
+            }
+        return (render, region);
+    }
+
+    /// <summary>GDI rendered the SDR desktop with a different curve than we do: a global, monotonic tone shift.</summary>
+    private static byte[] ToneShift(byte[] src)
+    {
+        var o = (byte[])src.Clone();
+        for (int i = 0; i < o.Length; i += 4)
+            for (int c = 0; c < 3; c++) o[i + c] = (byte)Math.Round(255.0 * Math.Pow(o[i + c] / 255.0, 1.25));
+        return o;
+    }
+
+    [Fact]
+    public void Global_tone_difference_alone_carries_nothing_over()
+    {
+        var (render, region) = Scene();
+        byte[] sharex = ToneShift(render);
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.Equal(0, res.Pixels);
+        Assert.Equal(render, res.Rgba);
+    }
+
+    [Fact]
+    public void Annotation_is_still_found_under_a_global_tone_difference()
+    {
+        var (render, region) = Scene();
+        byte[] sharex = ToneShift(render);
+        for (int y = 20; y < 30; y++)
+            for (int x = 30; x < 70; x++)
+            {
+                int i = (y * W + x) * 4;
+                sharex[i] = 255; sharex[i + 1] = 0; sharex[i + 2] = 0;
+            }
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.InRange(res.Pixels, 40 * 10, 44 * 14);
+        int inside = ((25 * W) + 50) * 4;
+        Assert.Equal((255, 0, 0), (res.Rgba[inside], res.Rgba[inside + 1], res.Rgba[inside + 2]));
+    }
+
+    [Fact]
+    public void Implausibly_large_masks_are_rejected()
+    {
+        var (render, region) = Scene();
+        var sharex = new byte[render.Length];
+        for (int i = 0; i < sharex.Length; i += 4) { sharex[i] = 200; sharex[i + 1] = 10; sharex[i + 2] = 10; sharex[i + 3] = 255; }   // unrelated image
+        AnnotationResult res = AnnotationRecovery.Apply(sharex, render, render, region, 2.5f, W, H);
+        Assert.Equal(0, res.Pixels);
+    }
+}
