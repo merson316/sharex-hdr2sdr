@@ -14,17 +14,17 @@ overwrites the saved PNG and copies the result to the clipboard.
    which ShareX already requires.
 2. Close ShareX, then `python3 tools/install_sharex_action.py`, then start ShareX again.
    Or in ShareX: Task settings > Actions > Add: name `HDR to SDR`, path to the exe, arguments `"$input"`,
-   extensions `png`, hidden window on; and tick "Perform actions" under After capture tasks.
-   The script also turns off "automatically use JPEG" (Task settings > Image), because the action only
-   processes PNG files. Pass `--keep-auto-jpeg` to leave it on.
+   extensions `png, jpg, jpeg, bmp, gif, tif, tiff, webp`, hidden window on; and tick "Perform actions"
+   under After capture tasks.
 
 ## Usage
 
-Nothing to do: every region, active-window and monitor capture is processed automatically.
-The clipboard ends up holding the tonemapped image. Failures leave ShareX's own image in place.
-
-Use ShareX's "Active monitor" capture rather than "Fullscreen" on a multi-monitor setup: "Fullscreen"
-spans all monitors, which version 1 does not handle (the original image is kept).
+Nothing to do: every region, window, monitor and fullscreen capture is processed automatically,
+including fullscreen captures that span several monitors and regions that straddle two of them.
+The saved file is rewritten in whatever format ShareX chose (PNG, JPEG, BMP, GIF, TIFF; WebP is
+decoded but Windows has no WebP encoder, so a WebP file is left as is while the clipboard is updated).
+The clipboard always holds a PNG plus a DIB of the tonemapped image. Failures leave ShareX's own
+image in place.
 
 Command line (see `hdr2sdr.exe --help`):
 
@@ -49,7 +49,7 @@ Log of the last run: `%LOCALAPPDATA%\hdr2sdr\last.log`. Exit codes: 0 ok, 2 bad 
 
 ## Limitations
 
-Regions spanning two monitors are not handled (exit 4). Content that changed between ShareX's capture
-and the re-capture differs slightly; if the region changed a lot (video, scrolling) the match can fail
-and the original is kept. The cursor is not included. ShareX's completion toast appears in the
+Content that changed between ShareX's capture and the re-capture differs slightly; if the region
+changed a lot (video, scrolling) the match can fail and the original is kept. Pixels on SDR monitors
+are passed through unchanged; only HDR monitors are re-tonemapped. The cursor is not included. ShareX's completion toast appears in the
 re-capture if it overlaps the region. DRM-protected content captures black.
