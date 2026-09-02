@@ -37,6 +37,7 @@ public sealed class OverlaySpike : IDisposable
         _hide = new System.Windows.Forms.Timer { Interval = 2500 };
         _hide.Tick += (_, _) => Hide("timeout");
         _service.Hotkeys.Swallow = true;
+        _service.Store.OverlayActive = true;
         _service.Hotkeys.Hotkey += OnHotkey;
         _service.RegionWindow.RegionWindowShown += () => _ui.BeginInvoke(() => Hide("ShareX region window shown"));
         _service.Log.Info("overlay spike active: ShareX hotkeys are swallowed, overlaid and re-injected");
@@ -146,6 +147,7 @@ public sealed class OverlaySpike : IDisposable
     public void Dispose()
     {
         _service.Hotkeys.Swallow = false;
+        _service.Store.OverlayActive = false;
         _service.Hotkeys.Hotkey -= OnHotkey;
         Hide("dispose");
         _hide.Dispose();

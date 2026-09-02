@@ -72,6 +72,7 @@ internal static class Pipeline
 
         var captured = new Dictionary<string, CapturedOutput>(StringComparer.OrdinalIgnoreCase);
         HelperClient? helper = null;
+        bool overlayCapture = false;
         if (settings.UseHelper)
         {
             helper = new HelperClient(log.Info);
@@ -84,8 +85,17 @@ internal static class Pipeline
                 {
                     log.Info($"helper snapshot ignored: taken {ageBeforeFile:F1} s before the file was written");
                 }
+                else if (snap.Header.Overlay && settings.HdrSidecar != "jxr")
+                {
+                    // ShareX captured the helper's SDR overlay: its file and clipboard are already right. Nothing to do.
+                    log.Info("ShareX captured the helper's SDR overlay; file and clipboard left as ShareX made them");
+                    helper.Consume();
+                    return ExitCodes.Ok;
+                }
                 else
                 {
+                    if (snap.Header.Overlay) log.Info("ShareX captured the helper's SDR overlay; only the HDR sidecar will be written");
+                    overlayCapture = snap.Header.Overlay;
                     for (int i = 0; i < snap.Header.Outputs.Count; i++)
                     {
                         Core.Snapshot.SnapshotOutput so = snap.Header.Outputs[i];
@@ -251,7 +261,7 @@ internal static class Pipeline
             }
         }
 
-        if (settings.CarryAnnotations && container != null && hdrRegion != null)
+        if (settings.CarryAnnotations && !overlayCapture && container != null && hdrRegion != null)
         {
             // What GDI produced for SDR pixels equals our default render; anything else ShareX's editor added.
             byte[] reference = customTonemap ? PixelConvert.ToRgba8(hdrRegion, PreviewTonemapper(container.Output)) : result;
@@ -271,13 +281,17 @@ internal static class Pipeline
         string extension = Path.GetExtension(target);
         byte[] png = Png.EncodeRgba8(result, tw, th);
         byte[]? fileBytes = null;
-        try
+        if (overlayCapture) fileBytes = null;   // ShareX's own file is already the SDR image
+        if (!overlayCapture)
         {
-            fileBytes = extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ? png : ImageIO.Encode(result, tw, th, extension, settings.JpegQuality, settings.WebpQuality);
-        }
-        catch (Exception e)
-        {
-            log.Warn($"cannot encode '{extension}' ({e.Message}); file left unchanged, clipboard still updated");
+            try
+            {
+                fileBytes = extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ? png : ImageIO.Encode(result, tw, th, extension, settings.JpegQuality, settings.WebpQuality);
+            }
+            catch (Exception e)
+            {
+                log.Warn($"cannot encode '{extension}' ({e.Message}); file left unchanged, clipboard still updated");
+            }
         }
         if (fileBytes != null)
         {
@@ -309,7 +323,7 @@ internal static class Pipeline
             }
         }
 
-        if (!opts.NoClipboard)
+        if (!opts.NoClipboard && !overlayCapture)
         {
             try
             {

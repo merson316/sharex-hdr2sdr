@@ -63,6 +63,8 @@ public class SnapshotProtocolTests
         string json = h.ToJson();
         SnapshotHeader back = SnapshotHeader.FromJson(json);
         Assert.Equal(h, back);
+        Assert.False(back.Overlay);
+        Assert.True(SnapshotHeader.FromJson((h with { Overlay = true }).ToJson()).Overlay);
         Assert.DoesNotContain('\n', json);   // one line: the protocol is line-delimited
     }
 }

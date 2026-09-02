@@ -22,6 +22,9 @@ public sealed class SnapshotStore
     /// <summary>The snapshot the action last consumed, kept only so the settings preview can re-render it.</summary>
     public Snapshot? LastForPreview { get; private set; }
 
+    /// <summary>Set by the overlay while it is showing frames to ShareX; stamped into every snapshot taken.</summary>
+    public volatile bool OverlayActive;
+
     public Snapshot? Current
     {
         get
@@ -52,7 +55,7 @@ public sealed class SnapshotStore
             }
             lock (_lock)
             {
-                _current = outputs.Count > 0 ? new Snapshot(new SnapshotHeader(DateTime.UtcNow, outputs), images) : null;
+                _current = outputs.Count > 0 ? new Snapshot(new SnapshotHeader(DateTime.UtcNow, outputs, OverlayActive), images) : null;
             }
         }
         finally
