@@ -71,17 +71,22 @@ print(f"action path: {exe}")
 print(f"AfterCaptureJob = {task['AfterCaptureJob']}")
 
 
-def schtasks(*a):
-    return subprocess.run([f"{SYS32}/schtasks.exe", *a], capture_output=True, text=True, cwd="/mnt/c" if ON_WSL else None)
+def powershell(script):
+    exe = f"{SYS32}/WindowsPowerShell/v1.0/powershell.exe"
+    return subprocess.run([exe, "-NoProfile", "-Command", script], capture_output=True, text=True, cwd="/mnt/c" if ON_WSL else None)
 
 
 helper_exe = exe.rsplit("\\", 1)[0] + "\\hdr2sdr-helper.exe"
 if want_helper:
-    r = schtasks("/Create", "/F", "/SC", "ONLOGON", "/RL", "LIMITED", "/TN", "hdr2sdr-helper", "/TR", f'"{helper_exe}"')
-    print("helper logon task:", "created" if r.returncode == 0 else "FAILED " + (r.stdout + r.stderr).strip())
-    r = schtasks("/Run", "/TN", "hdr2sdr-helper")
-    print("helper started:", r.returncode == 0)
+    # schtasks.exe is denied when called through WSL interop; the PowerShell cmdlets work.
+    r = powershell(
+        f"$a = New-ScheduledTaskAction -Execute '{helper_exe}'; "
+        "$t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME; "
+        "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; "
+        "Register-ScheduledTask -TaskName hdr2sdr-helper -Action $a -Trigger $t -Settings $s -RunLevel Limited -Force | Out-Null; "
+        "Start-ScheduledTask -TaskName hdr2sdr-helper")
+    print("helper logon task:", "created and started" if r.returncode == 0 else "FAILED " + (r.stdout + r.stderr).strip())
 elif drop_helper:
     subprocess.run([f"{SYS32}/taskkill.exe", "/IM", "hdr2sdr-helper.exe", "/F"], capture_output=True, cwd="/mnt/c" if ON_WSL else None)
-    r = schtasks("/Delete", "/F", "/TN", "hdr2sdr-helper")
+    r = powershell("Unregister-ScheduledTask -TaskName hdr2sdr-helper -Confirm:$false")
     print("helper logon task:", "removed" if r.returncode == 0 else "not present")
