@@ -50,6 +50,25 @@ public sealed class FloatImage
         return result;
     }
 
+    /// <summary>A float image placed at (Left, Top) in desktop coordinates.</summary>
+    public readonly record struct Tile(FloatImage Image, int Left, int Top);
+
+    /// <summary>Union of the tiles with gaps left at zero. Returns the canvas and its desktop-space origin.</summary>
+    public static (FloatImage Canvas, int Left, int Top) Composite(IReadOnlyList<Tile> tiles)
+    {
+        if (tiles.Count == 0) throw new ArgumentException("At least one tile is required.", nameof(tiles));
+        int left = tiles.Min(t => t.Left), top = tiles.Min(t => t.Top);
+        int right = tiles.Max(t => t.Left + t.Image.Width), bottom = tiles.Max(t => t.Top + t.Image.Height);
+        var canvas = new FloatImage(right - left, bottom - top);
+        foreach (Tile t in tiles)
+        {
+            int dx = t.Left - left, dy = t.Top - top;
+            for (int row = 0; row < t.Image.Height; row++)
+                Array.Copy(t.Image.Data, row * t.Image.Width * 3, canvas.Data, ((dy + row) * canvas.Width + dx) * 3, t.Image.Width * 3);
+        }
+        return (canvas, left, top);
+    }
+
     /// <summary>Clamp(value * scale, 0, 1) * 65535 as big-endian 16-bit samples (PNG order).</summary>
     public byte[] ToRgb16BigEndian(float scale)
     {

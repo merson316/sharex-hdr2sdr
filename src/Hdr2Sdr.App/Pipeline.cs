@@ -201,6 +201,30 @@ internal static class Pipeline
             }
         }
 
+        if (settings.HdrSidecar == "jxr")
+        {
+            try
+            {
+                FloatImage hdrRegion;
+                if (container != null)
+                {
+                    hdrRegion = container.Capture.Crop(region.Left - container.Output.Left, region.Top - container.Output.Top, tw, th);
+                }
+                else
+                {
+                    var (canvas, cLeft, cTop) = FloatImage.Composite(captured.Values.Select(c => new FloatImage.Tile(c.Capture, c.Output.Left, c.Output.Top)).ToList());
+                    hdrRegion = canvas.Crop(region.Left - cLeft, region.Top - cTop, tw, th);
+                }
+                string sidecar = Path.ChangeExtension(target, ".jxr");
+                File.WriteAllBytes(sidecar, JxrEncoder.EncodeHalf(hdrRegion));
+                log.Info($"wrote HDR sidecar {sidecar}");
+            }
+            catch (Exception e)
+            {
+                log.Warn($"HDR sidecar failed: {e.Message}");
+            }
+        }
+
         if (!opts.NoClipboard)
         {
             try
