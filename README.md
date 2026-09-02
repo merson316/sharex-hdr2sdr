@@ -89,7 +89,13 @@ sees the result and leaves it alone. The overlay disappears as soon as ShareX's 
 (about 0.3 s). Jobs started this way use ShareX's default task settings rather than per-hotkey
 overrides.
 
-**Post-capture mode** (hook disabled or paused, or captures started without a hotkey): the hotkey
+Captures do not have to start from a hotkey to get the overlay: the tray menu has a **Capture**
+submenu (region, active window, active monitor, fullscreen, last region), and
+`hdr2sdr-helper.exe --capture RectangleRegion` (or any of those job names) asks the running helper to do
+the same, which makes it easy to bind from other tools. Only captures started from ShareX's own tray
+menu or command line bypass the overlay.
+
+**Post-capture mode** (hook disabled or paused, or captures started from ShareX's own menu/CLI): the hotkey
 passes through to ShareX, the helper only freezes the frame, and the action re-tonemaps ShareX's file
 after the fact as described above. Without the helper, the action re-captures the screen when it runs.
 

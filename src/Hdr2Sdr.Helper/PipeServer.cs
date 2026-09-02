@@ -17,6 +17,8 @@ public sealed class PipeServer : IDisposable
     private readonly Func<string> _status;
     private readonly HelperLog _log;
     private readonly CancellationTokenSource _cts = new();
+    /// <summary>Starts a capture job through the helper (overlay + ShareX); set by the service.</summary>
+    public Action<string>? StartCapture { get; set; }
 
     public PipeServer(SnapshotStore store, Func<IReadOnlyList<CaptureLoop>> loops, Func<string> status, HelperLog log)
     {
@@ -97,6 +99,14 @@ public sealed class PipeServer : IDisposable
                         JsonElement r = doc.RootElement;
                         _store.LastRegion = new LastRegion(r.GetProperty("input").GetString() ?? "", r.GetProperty("left").GetInt32(), r.GetProperty("top").GetInt32(),
                             r.GetProperty("width").GetInt32(), r.GetProperty("height").GetInt32(), DateTime.UtcNow);
+                        await WriteLine(pipe, "{\"ok\":true}");
+                        break;
+                    }
+                    case "capture":
+                    {
+                        string job = doc.RootElement.TryGetProperty("job", out JsonElement j) ? j.GetString() ?? "" : "";
+                        if (StartCapture == null) { await WriteLine(pipe, "{\"ok\":false,\"reason\":\"capture not available\"}"); break; }
+                        StartCapture(job);
                         await WriteLine(pipe, "{\"ok\":true}");
                         break;
                     }

@@ -65,7 +65,7 @@ public sealed class HelperService : IDisposable
     public void Start()
     {
         StartLoops();
-        _pipe = new PipeServer(Store, () => Loops, StatusText, Log);
+        _pipe = new PipeServer(Store, () => Loops, StatusText, Log) { StartCapture = StartCapture };
         _pipe.Start();
         Log.Info("helper started");
     }
@@ -101,6 +101,35 @@ public sealed class HelperService : IDisposable
     }
 
     private void OnHotkey(Core.Snapshot.HotkeyCombo combo) => Trigger("hotkey " + combo.Job);
+
+    public static readonly string[] CaptureJobs = { "RectangleRegion", "ActiveWindow", "ActiveMonitor", "PrintScreen", "LastRegion" };
+
+    /// <summary>
+    /// Starts a ShareX capture job from the helper (tray menu or command line): freeze, overlay, then the ShareX job.
+    /// Without the overlay (hook disabled) the job is started directly and the post-capture path corrects the file.
+    /// </summary>
+    public void StartCapture(string job)
+    {
+        if (!Core.Snapshot.ShareXHotkeys.CaptureJobs.Contains(job)) { Log.Warn($"unknown capture job '{job}'"); return; }
+        _lastTrigger = DateTime.MinValue;   // never debounce an explicit request
+        Trigger("helper " + job);
+        if (_overlay != null) _overlay.Capture(job);
+        else StartShareXJob(job);
+    }
+
+    private void StartShareXJob(string job)
+    {
+        try
+        {
+            string exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ShareX", "ShareX.exe");
+            string? running = System.Diagnostics.Process.GetProcessesByName("ShareX").Select(p => { try { return p.MainModule?.FileName; } catch { return null; } }).FirstOrDefault(f => f != null);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(running ?? exe, "-" + job) { UseShellExecute = false, CreateNoWindow = true });
+        }
+        catch (Exception e)
+        {
+            Log.Warn("could not start ShareX: " + e.Message);
+        }
+    }
 
     private DateTime _lastTrigger;
 

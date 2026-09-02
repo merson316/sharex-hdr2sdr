@@ -24,6 +24,10 @@ public sealed class TrayApp : ApplicationContext
         _status = new ToolStripMenuItem("starting") { Enabled = false };
         menu.Items.Add(_status);
         menu.Items.Add(new ToolStripSeparator());
+        var capture = new ToolStripMenuItem("Capture");
+        foreach (var (label, job) in new[] { ("Region", "RectangleRegion"), ("Active window", "ActiveWindow"), ("Active monitor", "ActiveMonitor"), ("Fullscreen", "PrintScreen"), ("Last region", "LastRegion") })
+            capture.DropDownItems.Add(label, null, (_, _) => _service.StartCapture(job));
+        menu.Items.Add(capture);
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
         _pause = new ToolStripMenuItem("Pause (let ShareX capture on its own)", null, (_, _) => { _service.Paused = !_service.Paused; _pause.Checked = _service.Paused; });
         menu.Items.Add(_pause);

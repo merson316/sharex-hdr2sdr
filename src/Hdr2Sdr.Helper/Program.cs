@@ -9,6 +9,8 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Contains("--selftest")) return SelfTest();
+        int captureIndex = Array.IndexOf(args, "--capture");
+        if (captureIndex >= 0) return CaptureCommand(captureIndex + 1 < args.Length ? args[captureIndex + 1] : "RectangleRegion");
 
         using var mutex = new Mutex(true, @"Local\hdr2sdr-helper", out bool first);
         if (!first) return 0;   // already running
@@ -23,6 +25,31 @@ internal static class Program
         service.AttachUi(tray.UiControl);
         Application.Run(tray);
         return 0;
+    }
+
+    /// <summary>
+    /// `hdr2sdr-helper.exe --capture <Job>`: asks the running helper to start the job with the overlay; if no helper
+    /// is running, starts the ShareX job directly (the post-capture action then corrects the file).
+    /// </summary>
+    private static int CaptureCommand(string job)
+    {
+        try
+        {
+            using var pipe = new System.IO.Pipes.NamedPipeClientStream(".", PipeServer.PipeName, System.IO.Pipes.PipeDirection.InOut);
+            pipe.Connect(500);
+            byte[] req = System.Text.Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { op = "capture", job }) + "\n");
+            pipe.Write(req); pipe.Flush();
+            var buf = new byte[256];
+            pipe.Read(buf, 0, buf.Length);
+            return 0;
+        }
+        catch
+        {
+            string exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ShareX", "ShareX.exe");
+            if (!File.Exists(exe)) return 1;
+            Process.Start(new ProcessStartInfo(exe, "-" + job) { UseShellExecute = false, CreateNoWindow = true });
+            return 0;
+        }
     }
 
     /// <summary>Runs the capture loops for two seconds, freezes, takes a snapshot in memory and reports timing. Writes no images.</summary>

@@ -53,10 +53,18 @@ public sealed class OverlayController : IDisposable
     {
         _sw.Restart();
         // The service has already frozen the frame; do the rest on the UI thread.
-        _ui.BeginInvoke(() => ShowAndReinject(combo));
+        _ui.BeginInvoke(() => ShowAndTrigger(combo));
     }
 
-    private void ShowAndReinject(HotkeyCombo combo)
+    /// <summary>Overlay-then-trigger for a job started from the helper itself (tray menu, command line). Frame must already be frozen.</summary>
+    public void Capture(string job)
+    {
+        _sw.Restart();
+        var combo = new HotkeyCombo(0, false, false, false, false, job);
+        if (_ui.InvokeRequired) _ui.BeginInvoke(() => ShowAndTrigger(combo)); else ShowAndTrigger(combo);
+    }
+
+    private void ShowAndTrigger(HotkeyCombo combo)
     {
         try
         {
@@ -88,7 +96,7 @@ public sealed class OverlayController : IDisposable
         {
             _service.Log.Error("overlay failed: " + e.Message);
             Hide("error");
-            TriggerShareX(combo);   // never leave the user's hotkey swallowed
+            TriggerShareX(combo);   // never leave the user's capture unstarted
         }
     }
 
@@ -112,6 +120,7 @@ public sealed class OverlayController : IDisposable
         {
             _service.Log.Warn("ShareX CLI trigger failed: " + e.Message);
         }
+        if (combo.VirtualKey == 0) return "nothing (ShareX not found)";
         Reinject(combo);
         return "re-injected hotkey";
     }
