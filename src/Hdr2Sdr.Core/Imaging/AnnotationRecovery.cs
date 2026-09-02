@@ -44,11 +44,13 @@ public static class AnnotationRecovery
         byte[][] lut = FitLuts(sharex, reference, sdr, n);
 
         var raw = new bool[n];
+        var diff = new int[n];
         for (int i = 0; i < n; i++)
         {
             if (!sdr[i]) continue;
             int p = i * 4;
             int d = Math.Max(Math.Abs(sharex[p] - lut[0][reference[p]]), Math.Max(Math.Abs(sharex[p + 1] - lut[1][reference[p + 1]]), Math.Abs(sharex[p + 2] - lut[2][reference[p + 2]])));
+            diff[i] = d;
             raw[i] = d > Threshold;
         }
 
@@ -77,14 +79,20 @@ public static class AnnotationRecovery
 
         if (count > sdrCount * MaxMaskShare) return new AnnotationResult((byte[])target.Clone(), 0);   // not the same frame
 
+        // Blend by how strongly each pixel differs: solid annotation pixels are copied outright, anti-aliased edges and
+        // the grown border mix into our render instead of dragging ShareX's background (and its compression noise) along.
         var result = (byte[])target.Clone();
+        int applied = 0;
         for (int i = 0; i < n; i++)
         {
             if (!mask[i]) continue;
+            float a = Math.Clamp((diff[i] - Threshold * 0.5f) / (Threshold * 1.5f), 0f, 1f);
+            if (a <= 0f) continue;
+            applied++;
             int p = i * 4;
-            result[p] = sharex[p]; result[p + 1] = sharex[p + 1]; result[p + 2] = sharex[p + 2];
+            for (int c = 0; c < 3; c++) result[p + c] = (byte)Math.Round(result[p + c] * (1f - a) + sharex[p + c] * a);
         }
-        return new AnnotationResult(result, count);
+        return new AnnotationResult(result, applied);
     }
 
     /// <summary>Per-channel 256-entry maps from our value to ShareX's median value at that level; gaps are interpolated.</summary>
